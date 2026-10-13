@@ -10,6 +10,8 @@
     </form>
 
     <div class="toolbar">
+        <button type="button" @onclick="Undo" disabled="@(!tree.CanUndo)">Undo (Ctrl+Z)</button>
+        <button type="button" @onclick="Redo" disabled="@(!tree.CanRedo)">Redo (Ctrl+Shift+Z)</button>
         <button type="button" @onclick="AddCause" disabled="@(selected is null)">Add cause (Tab)</button>
         <button type="button" @onclick="AddEffect" disabled="@(selected is null)">Add effect</button>
         <button type="button" @onclick="ToggleLinking" disabled="@(selected is null)" aria-pressed="@(linking ? "true" : "false")">Link: selected is a cause of…</button>
@@ -128,6 +130,20 @@
         Relayout();
     }
 
+    private void Undo() => Travel(tree.Undo());
+    private void Redo() => Travel(tree.Redo());
+
+    private void Travel(bool changed)
+    {
+        Begin();
+        if (!changed) return;
+        if (selected is { } id && tree.Entities.All(e => e.Id != id)) selected = null;   // the selected entity may not exist in the restored tree
+        linking = false;
+        editRevision++;   // the kept statement may differ after the restore, so rebuild the edit box
+        Relayout();
+        focusCanvas = true;
+    }
+
     private void ToggleLinking()
     {
         Begin();
@@ -160,6 +176,17 @@
 
     private void OnKeyDown(KeyboardEventArgs e)
     {
+        if (e.CtrlKey || e.MetaKey)
+        {
+            switch (e.Key.ToLowerInvariant())
+            {
+                case "z" when e.ShiftKey: Redo(); break;
+                case "z": Undo(); break;
+                case "y": Redo(); break;
+                default: return;
+            }
+            return;
+        }
         switch (e.Key)
         {
             case "Tab": AddCause(); break;
