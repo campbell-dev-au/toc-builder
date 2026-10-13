@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Agent skills are installed locally (see README); only skills-lock.json is committed
+.agents/
