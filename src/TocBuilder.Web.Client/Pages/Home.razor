@@ -7,11 +7,19 @@
     <form class="add" @onsubmit="AddEntity">
         <input @bind="statement" @bind:event="oninput" placeholder="Describe an entity, e.g. an undesirable effect" size="52" aria-label="Entity statement" />
         <button type="submit">Add entity</button>
-        <span class="hint">
-            @if (selected is null) { <text>Click an entity to select it.</text> }
-            else { <text>Press Tab to add a cause to the selected entity, Escape to deselect.</text> }
-        </span>
     </form>
+
+    <div class="toolbar">
+        <button type="button" @onclick="AddCause" disabled="@(selected is null)">Add cause (Tab)</button>
+        <button type="button" @onclick="AddEffect" disabled="@(selected is null)">Add effect</button>
+        <button type="button" @onclick="ToggleLinking" disabled="@(selected is null)" aria-pressed="@(linking ? "true" : "false")">Link: selected is a cause of…</button>
+        <button type="button" @onclick="DeleteSelected" disabled="@(selected is null)">Delete (Del)</button>
+        @if (SelectedEntity is { } current)
+        {
+            <input class="edit" @key="editRevision" value="@current.Statement" @onchange="EditSelected" size="40" aria-label="Selected entity statement" />
+        }
+        <span class="message @(messageIsError ? "error" : "")" role="status">@message</span>
+    </div>
 
     <div class="canvas" tabindex="0" @ref="canvasRef" @onkeydown="OnKeyDown" @onkeydown:preventDefault="@(selected is not null)">
         @if (tree.Entities.Count == 0)
@@ -49,31 +57,116 @@
     private readonly Tree tree = new();
     private TreeLayout.Result placement = TreeLayout.Compute(new Tree());
     private EntityId? selected;
+    private bool linking;
     private string statement = "";
+    private string message = "";
+    private bool messageIsError;
+    private int editRevision;   // changing it replaces the edit box, so it shows the kept statement again
     private ElementReference canvasRef;
     private bool focusCanvas;
 
     private const string SelectionColour = "#1565c0";   // keep in step with --selection in app.css
     private const int MaxDisplayedStatement = 22;
 
+    private Entity? SelectedEntity => selected is { } id ? tree.Entities.First(e => e.Id == id) : null;
+
     private static string TruncateForDisplay(string text) =>
         text.Length > MaxDisplayedStatement ? text[..(MaxDisplayedStatement - 1)] + "…" : text;
+
+    // The text typed in the "add entity" box names the next entity added, otherwise the default is used.
+    private string TakeStatement(string fallback)
+    {
+        var text = string.IsNullOrWhiteSpace(statement) ? fallback : statement;
+        statement = "";
+        return text;
+    }
 
     private void AddEntity()
     {
         if (string.IsNullOrWhiteSpace(statement)) return;
-        SelectNew(tree.AddEntity(statement.Trim()));
-        focusCanvas = true;   // so Tab can add a cause straight away
+        Begin();
+        SelectNew(tree.AddEntity(TakeStatement("")));
+    }
+
+    private void AddCause()
+    {
+        if (selected is not { } effect) return;
+        Begin();
+        SelectNew(tree.AddCause(effect, TakeStatement("New cause")));
+    }
+
+    private void AddEffect()
+    {
+        if (selected is not { } cause) return;
+        Begin();
+        SelectNew(tree.AddEffect(cause, TakeStatement("New effect")));
+    }
+
+    private void DeleteSelected()
+    {
+        if (selected is not { } id) return;
+        Begin();
+        tree.Delete(id);
+        selected = null;
+        linking = false;
+        Relayout();
+        focusCanvas = true;
+    }
+
+    private void EditSelected(ChangeEventArgs e)
+    {
+        if (selected is not { } id) return;
+        Begin();
+        var text = e.Value?.ToString() ?? "";
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Report("A statement cannot be blank; the previous one was kept.", isError: true);
+            editRevision++;
+            return;
+        }
+        tree.EditStatement(id, text);
+        Relayout();
+    }
+
+    private void ToggleLinking()
+    {
+        Begin();
+        linking = !linking;
+        if (linking) Report("Click the entity it is a cause of, or press Escape to cancel.");
+        focusCanvas = true;
+    }
+
+    private void Select(EntityId id)
+    {
+        if (linking && selected is not null) { LinkSelectedTo(id); return; }   // linking an entity to itself is reported as a cycle
+        linking = false;
+        selected = id;
+    }
+
+    private void LinkSelectedTo(EntityId effect)
+    {
+        Begin();
+        var outcome = tree.Link(selected!.Value, effect);
+        switch (outcome)
+        {
+            case LinkOutcome.Linked: Report("Linked."); break;
+            case LinkOutcome.AlreadyLinked: Report("Those entities are already linked."); break;
+            case LinkOutcome.WouldCreateCycle: Report("Rejected: that link would create a cycle.", isError: true); break;
+            default: throw new InvalidOperationException($"Unhandled link outcome {outcome}.");
+        }
+        Relayout();
+        linking = false;
     }
 
     private void OnKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Tab" && selected is { } effect)
+        switch (e.Key)
         {
-            var text = string.IsNullOrWhiteSpace(statement) ? "New cause" : statement.Trim();
-            SelectNew(tree.AddCause(effect, text));
+            case "Tab": AddCause(); break;
+            case "Delete": DeleteSelected(); break;
+            case "Escape" when linking: linking = false; Report(""); break;
+            case "Escape": selected = null; break;
         }
-        else if (e.Key == "Escape") selected = null;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -83,14 +176,22 @@
         await canvasRef.FocusAsync();
     }
 
+    private void Begin() => Report("");
+
+    private void Report(string text, bool isError = false)
+    {
+        message = text;
+        messageIsError = isError;
+    }
+
     private void SelectNew(Entity entity)
     {
         selected = entity.Id;
-        statement = "";
+        linking = false;
         Relayout();
+        focusCanvas = true;   // so the keyboard can keep building straight away
     }
 
-    private void Select(EntityId id) => selected = id;
-    private void Deselect() => selected = null;
+    private void Deselect() { selected = null; linking = false; }
     private void Relayout() => placement = TreeLayout.Compute(tree);
 }
