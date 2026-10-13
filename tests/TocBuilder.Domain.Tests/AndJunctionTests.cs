@@ -191,7 +191,7 @@ public class AndJunctionTests
     }
 
     [Fact]
-    public void Junction_ids_are_not_reused_after_undo()
+    public void Undo_restores_the_junction_id_counter_so_a_regrouped_junction_gets_the_same_id()
     {
         var (tree, effect, a, b, _) = TreeWithThreeCauses();
         var first = tree.Group(effect.Id, [a.Id, b.Id]).Junction!;
@@ -210,5 +210,21 @@ public class AndJunctionTests
         Assert.Throws<ArgumentException>(() => tree.Group(effect.Id, [a.Id, new EntityId(99)]));
         Assert.Throws<ArgumentException>(() => tree.Ungroup(new JunctionId(1)));
         Assert.Throws<ArgumentException>(() => tree.AddToJunction(new JunctionId(1), a.Id));
+    }
+
+    [Fact]
+    public void Removing_a_cause_and_deleting_a_member_are_undoable()
+    {
+        var (tree, effect, a, b, c) = TreeWithThreeCauses();
+        var junction = tree.Group(effect.Id, [a.Id, b.Id, c.Id]).Junction!;
+
+        tree.RemoveFromJunction(junction.Id, c.Id);
+        tree.Undo();
+        Assert.Equal([a.Id, b.Id, c.Id], Assert.Single(tree.Junctions).Causes);
+
+        tree.Delete(c.Id);
+        tree.Undo();
+        Assert.Equal([a.Id, b.Id, c.Id], Assert.Single(tree.Junctions).Causes);
+        Assert.Contains(new CausalLink(c.Id, effect.Id), tree.Links);
     }
 }
