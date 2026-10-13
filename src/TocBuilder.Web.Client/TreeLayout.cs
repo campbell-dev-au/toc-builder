@@ -24,6 +24,25 @@ public static class TreeLayout
             var mid = (y1 + y2) / 2;
             return $"M{x1},{y1} C{x1},{mid} {x2},{mid} {x2},{y2}";
         }
+
+        /// <summary>An arc across the member links just below their effect, with the point to label it at. Points sit on each link's curve, so the arc follows dragged entities.</summary>
+        public (string Path, double LabelX, double LabelY) JunctionArc(AndJunction junction)
+        {
+            const double t = 0.22;   // how far along each link, measured from the effect
+            var (effectX, effectY) = Positions[junction.Effect];
+            double x2 = effectX + EntityWidth / 2, y2 = effectY + EntityHeight;
+            var points = junction.Causes.Select(cause =>
+            {
+                var (causeX, causeY) = Positions[cause];
+                double x1 = causeX + EntityWidth / 2, y1 = causeY, mid = (y1 + y2) / 2, u = 1 - t;
+                // Cubic Bezier of LinkPath evaluated t of the way back from the effect.
+                var x = t * t * t * x1 + 3 * t * t * u * x1 + 3 * t * u * u * x2 + u * u * u * x2;
+                var y = t * t * t * y1 + 3 * t * t * u * mid + 3 * t * u * u * mid + u * u * u * y2;
+                return (X: x, Y: y);
+            }).OrderBy(p => p.X).ToArray();
+            var path = "M" + string.Join(" L", points.Select(p => $"{p.X},{p.Y}"));
+            return (path, points.Average(p => p.X), points.Min(p => p.Y) - 4);
+        }
     }
 
     public static Result Compute(Tree tree)

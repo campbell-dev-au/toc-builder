@@ -22,19 +22,31 @@ public sealed record CausalLink(EntityId Cause, EntityId Effect);
 
 public enum LinkOutcome { Linked, AlreadyLinked, WouldCreateCycle }
 
+public readonly record struct JunctionId(int Value);
+
+/// <summary>Causes of one effect that are only jointly sufficient for it. Each cause also has its own Causal link to the effect.</summary>
+public sealed record AndJunction(JunctionId Id, EntityId Effect, IReadOnlyList<EntityId> Causes);
+
+public enum JunctionOutcome { Done, TooFewCauses, NotACauseOfEffect, AlreadyInJunction, WouldCreateCycle }
+
+public sealed record JunctionResult(JunctionOutcome Outcome, AndJunction? Junction = null);
+
 public sealed class Tree
 {
     private readonly List<Entity> _entities = [];
     private readonly List<CausalLink> _links = [];
+    private readonly List<AndJunction> _junctions = [];
     private int _nextId = 1;
+    private int _nextJunctionId = 1;
     private readonly Stack<Snapshot> _undo = new();
     private readonly Stack<Snapshot> _redo = new();
 
     /// <summary>The whole editable state of a tree. Every tree-changing command is undone by restoring one of these, so commands added later are undoable as long as their state lives here.</summary>
-    private sealed record Snapshot(Entity[] Entities, CausalLink[] Links, int NextId);
+    private sealed record Snapshot(Entity[] Entities, CausalLink[] Links, AndJunction[] Junctions, int NextId, int NextJunctionId);
 
     public IReadOnlyList<Entity> Entities => _entities;
     public IReadOnlyList<CausalLink> Links => _links;
+    public IReadOnlyList<AndJunction> Junctions => _junctions;
 
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
@@ -128,6 +140,77 @@ public sealed class Tree
         RecordUndoStep();
         _entities.RemoveAt(index);
         _links.RemoveAll(l => l.Cause == id || l.Effect == id);
+        _junctions.RemoveAll(j => j.Effect == id);
+        foreach (var junction in _junctions.Where(j => j.Causes.Contains(id)).ToArray())
+            Shrink(junction, id);
+    }
+
+    /// <summary>Groups existing causes of <paramref name="effect"/> into one AND-junction. Their Causal links are kept.</summary>
+    public JunctionResult Group(EntityId effect, IReadOnlyCollection<EntityId> causes)
+    {
+        EnsureExists(effect);
+        foreach (var cause in causes) EnsureExists(cause);
+        var distinct = causes.Distinct().ToArray();
+        if (distinct.Length < 2) return new JunctionResult(JunctionOutcome.TooFewCauses);
+        if (distinct.Any(c => !_links.Contains(new CausalLink(c, effect))))
+            return new JunctionResult(JunctionOutcome.NotACauseOfEffect);
+        if (distinct.Any(c => InJunctionOf(effect, c))) return new JunctionResult(JunctionOutcome.AlreadyInJunction);
+        RecordUndoStep();
+        var junction = new AndJunction(new JunctionId(_nextJunctionId++), effect, distinct);
+        _junctions.Add(junction);
+        return new JunctionResult(JunctionOutcome.Done, junction);
+    }
+
+    /// <summary>Adds a further cause to a junction, linking it to the junction's effect first when it is not already a cause of it.</summary>
+    public JunctionOutcome AddToJunction(JunctionId junctionId, EntityId cause)
+    {
+        var junction = _junctions[JunctionIndex(junctionId)];
+        EnsureExists(cause);
+        if (InJunctionOf(junction.Effect, cause)) return JunctionOutcome.AlreadyInJunction;
+        var link = new CausalLink(cause, junction.Effect);
+        var needsLink = !_links.Contains(link);
+        if (needsLink && (cause == junction.Effect || LeadsTo(junction.Effect, cause))) return JunctionOutcome.WouldCreateCycle;
+        RecordUndoStep();
+        if (needsLink) _links.Add(link);
+        Replace(junction, [.. junction.Causes, cause]);
+        return JunctionOutcome.Done;
+    }
+
+    /// <summary>Removes the junction; the Causal links of its causes stay, so they become independent causes again.</summary>
+    public void Ungroup(JunctionId junctionId)
+    {
+        var index = JunctionIndex(junctionId);
+        RecordUndoStep();
+        _junctions.RemoveAt(index);
+    }
+
+    /// <summary>Takes one cause out of a junction, keeping its Causal link. A junction left with a single cause is dissolved.</summary>
+    public void RemoveFromJunction(JunctionId junctionId, EntityId cause)
+    {
+        var junction = _junctions[JunctionIndex(junctionId)];
+        if (!junction.Causes.Contains(cause)) throw new ArgumentException($"Entity {cause.Value} is not in junction {junctionId.Value}.", nameof(cause));
+        RecordUndoStep();
+        Shrink(junction, cause);
+    }
+
+    private bool InJunctionOf(EntityId effect, EntityId cause) =>
+        _junctions.Any(j => j.Effect == effect && j.Causes.Contains(cause));
+
+    private void Shrink(AndJunction junction, EntityId cause)
+    {
+        var remaining = junction.Causes.Where(c => c != cause).ToArray();
+        if (remaining.Length < 2) _junctions.Remove(junction);
+        else Replace(junction, remaining);
+    }
+
+    private void Replace(AndJunction junction, EntityId[] causes) =>
+        _junctions[_junctions.IndexOf(junction)] = junction with { Causes = causes };
+
+    private int JunctionIndex(JunctionId id)
+    {
+        var index = _junctions.FindIndex(j => j.Id == id);
+        if (index < 0) throw new ArgumentException($"No AND-junction with id {id.Value} in this tree.", nameof(id));
+        return index;
     }
 
     private Entity Add(string cleanStatement)
@@ -145,7 +228,7 @@ public sealed class Tree
         _redo.Clear();
     }
 
-    private Snapshot Capture() => new([.. _entities], [.. _links], _nextId);
+    private Snapshot Capture() => new([.. _entities], [.. _links], [.. _junctions], _nextId, _nextJunctionId);
 
     private void Restore(Snapshot snapshot)
     {
@@ -153,7 +236,10 @@ public sealed class Tree
         _entities.AddRange(snapshot.Entities);
         _links.Clear();
         _links.AddRange(snapshot.Links);
+        _junctions.Clear();
+        _junctions.AddRange(snapshot.Junctions);
         _nextId = snapshot.NextId;
+        _nextJunctionId = snapshot.NextJunctionId;
     }
 
     private static string Clean(string statement)
