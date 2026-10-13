@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TocBuilder.Domain/TocBuilder.Domain.csproj" />
+    <Project Path="src/TocBuilder.Web.Client/TocBuilder.Web.Client.csproj" />
+    <Project Path="src/TocBuilder.Web/TocBuilder.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TocBuilder.Domain.Tests/TocBuilder.Domain.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,94 @@
+@page "/"
+@using TocBuilder.Domain
+
+<PageTitle>TOC Builder</PageTitle>
+
+<div class="editor">
+    <form class="add" @onsubmit="AddEntity">
+        <input @bind="statement" @bind:event="oninput" placeholder="Describe an entity, e.g. an undesirable effect" size="52" aria-label="Entity statement" />
+        <button type="submit">Add entity</button>
+        <span class="hint">
+            @if (selected is null) { <text>Click an entity to select it.</text> }
+            else { <text>Press Tab to add a cause to the selected entity, Escape to deselect.</text> }
+        </span>
+    </form>
+
+    <div class="canvas" tabindex="0" @ref="canvasRef" @onkeydown="OnKeyDown" @onkeydown:preventDefault="@(selected is not null)">
+        @if (tree.Entities.Count == 0)
+        {
+            <p class="empty">Add a first entity to begin.</p>
+        }
+        else
+        {
+            <svg width="@placement.Width" height="@placement.Height" xmlns="http://www.w3.org/2000/svg" @onclick="Deselect">
+                <defs>
+                    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                        <path d="M0,0 L10,5 L0,10 z" fill="#555" />
+                    </marker>
+                </defs>
+                @foreach (var link in tree.Links)
+                {
+                    var (cx, cy) = placement.Positions[link.Cause];
+                    var (ex, ey) = placement.Positions[link.Effect];
+                    var x1 = cx + TreeLayout.NodeWidth / 2; var y1 = cy;
+                    var x2 = ex + TreeLayout.NodeWidth / 2; var y2 = ey + TreeLayout.NodeHeight;
+                    var mid = (y1 + y2) / 2;
+                    <path d="@($"M{x1},{y1} C{x1},{mid} {x2},{mid} {x2},{y2}")" fill="none" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)" />
+                }
+                @foreach (var entity in tree.Entities)
+                {
+                    var (x, y) = placement.Positions[entity.Id];
+                    var isSelected = selected == entity.Id;
+                    <g @onclick="() => Select(entity.Id)" @onclick:stopPropagation style="cursor:pointer">
+                        <rect x="@x" y="@y" width="@TreeLayout.NodeWidth" height="@TreeLayout.NodeHeight" rx="6"
+                              fill="#f4f6fa" stroke="@(isSelected ? "#1565c0" : "#888")" stroke-width="@(isSelected ? 3 : 1.2)" />
+                        <text x="@(x + TreeLayout.NodeWidth / 2)" y="@(y + TreeLayout.NodeHeight / 2 + 4)" text-anchor="middle" font-size="12" font-family="sans-serif">@Clip(entity.Statement)</text>
+                    </g>
+                }
+            </svg>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly Tree tree = new();
+    private TreeLayout.Result placement = TreeLayout.Compute(new Tree());
+    private EntityId? selected;
+    private string statement = "";
+    private ElementReference canvasRef;
+    private bool focusCanvas;
+
+    private static string Clip(string text) => text.Length > 22 ? text[..21] + "…" : text;
+
+    private void AddEntity()
+    {
+        if (string.IsNullOrWhiteSpace(statement)) return;
+        selected = tree.AddEntity(statement.Trim()).Id;
+        statement = "";
+        Relayout();
+        focusCanvas = true;   // so Tab can add a cause straight away
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Tab" && selected is { } effect)
+        {
+            var text = string.IsNullOrWhiteSpace(statement) ? "New cause" : statement.Trim();
+            selected = tree.AddCause(effect, text).Id;
+            statement = "";
+            Relayout();
+        }
+        else if (e.Key == "Escape") selected = null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!focusCanvas) return;
+        focusCanvas = false;
+        await canvasRef.FocusAsync();
+    }
+
+    private void Select(EntityId id) => selected = id;
+    private void Deselect() => selected = null;
+    private void Relayout() => placement = TreeLayout.Compute(tree);
+}
