@@ -25,7 +25,10 @@ h1:focus {
 
 .editor { --selection: #1565c0; padding-top: 1rem; }
 .editor .add { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
-.editor .hint { color: #666; }
 .editor .canvas { overflow: auto; border: 1px solid #ccc; min-height: 60vh; outline: none; }
 .editor .canvas:focus-visible { box-shadow: 0 0 0 2px var(--selection); }
 .editor .empty { color: #666; padding: 1rem; }
+.editor .toolbar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.editor .toolbar button[aria-pressed="true"] { background: var(--selection); color: #fff; }
+.editor .message { color: #555; }
+.editor .message.error { color: #b71c1c; }
