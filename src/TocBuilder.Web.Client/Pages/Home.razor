@@ -15,11 +15,22 @@
         <button type="button" @onclick="AddCause" disabled="@(selected is null)">Add cause (Tab)</button>
         <button type="button" @onclick="AddEffect" disabled="@(selected is null)">Add effect</button>
         <button type="button" @onclick="ToggleLinking" disabled="@(selected is null)" aria-pressed="@(linking ? "true" : "false")">Link: selected is a cause of…</button>
-        <button type="button" @onclick="DeleteSelected" disabled="@(selected is null)">Delete (Del)</button>
+        <button type="button" @onclick="StartGrouping" disabled="@(selected is null)" aria-pressed="@(junctionMode == JunctionMode.Grouping ? "true" : "false")">AND-group causes…</button>
+        @if (junctionMode == JunctionMode.Grouping)
+        {
+            <button type="button" @onclick="ApplyGrouping" disabled="@(groupMembers.Count < 2)">Apply AND-group (@groupMembers.Count)</button>
+        }
+        <button type="button" @onclick="DeleteSelected" disabled="@(selected is null && selectedJunction is null)">Delete (Del)</button>
+        @if (selectedJunction is not null)
+        {
+            <button type="button" @onclick="() => StartJunctionMode(JunctionMode.Adding)" aria-pressed="@(junctionMode == JunctionMode.Adding ? "true" : "false")">Add cause to AND…</button>
+            <button type="button" @onclick="() => StartJunctionMode(JunctionMode.Removing)" aria-pressed="@(junctionMode == JunctionMode.Removing ? "true" : "false")">Remove cause from AND…</button>
+            <button type="button" @onclick="Ungroup">Ungroup</button>
+        }
         @if (SelectedEntity is { } current)
         {
-            <input class="edit" @key="editRevision" value="@current.Statement" @onchange="EditSelected" size="40" aria-label="Selected entity statement" />
-            <select @key="editRevision" value="@current.Tag" @onchange="TagSelected" aria-label="Selected entity tag">
+            <input class="edit" @key="(editRevision, 0)" value="@current.Statement" @onchange="EditSelected" size="40" aria-label="Selected entity statement" />
+            <select @key="(editRevision, 1)" value="@current.Tag" @onchange="TagSelected" aria-label="Selected entity tag">
                 <option value="@EntityTag.None">No tag</option>
                 <option value="@EntityTag.Ude">UDE</option>
                 <option value="@EntityTag.CoreProblem">Core problem</option>
@@ -46,13 +57,24 @@
                 {
                     <path d="@placement.LinkPath(link)" fill="none" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)" />
                 }
+                @foreach (var junction in tree.Junctions)
+                {
+                    var (arc, labelX, labelY) = placement.JunctionArc(junction);
+                    var junctionSelected = selectedJunction == junction.Id;
+                    var colour = junctionSelected ? SelectionColour : JunctionColour;
+                    <g @onclick="() => SelectJunction(junction.Id)" @onclick:stopPropagation style="cursor:pointer" aria-label="AND-junction">
+                        <path d="@arc" fill="none" stroke="transparent" stroke-width="14" />
+                        <path d="@arc" fill="none" stroke="@colour" stroke-width="4" stroke-linecap="round" />
+                        <text x="@labelX" y="@labelY" text-anchor="middle" font-size="10" font-weight="bold" font-family="sans-serif" fill="@colour">AND</text>
+                    </g>
+                }
                 @foreach (var entity in tree.Entities)
                 {
                     var (x, y) = placement.Positions[entity.Id];
                     var isSelected = selected == entity.Id;
                     <g @onclick="() => Select(entity.Id)" @onclick:stopPropagation style="cursor:pointer">
                         <rect x="@x" y="@y" width="@TreeLayout.EntityWidth" height="@TreeLayout.EntityHeight" rx="6"
-                              fill="#f4f6fa" stroke="@(isSelected ? SelectionColour : "#888")" stroke-width="@(isSelected ? 3 : 1.2)" />
+                              fill="#f4f6fa" stroke="@(isSelected ? SelectionColour : groupMembers.Contains(entity.Id) ? JunctionColour : "#888")" stroke-width="@(isSelected || groupMembers.Contains(entity.Id) ? 3 : 1.2)" />
                         <text x="@(x + 6)" y="@(y - 4)" font-size="11" font-weight="bold" font-family="sans-serif" fill="@(entity.Tag == EntityTag.Ude ? "#b71c1c" : "#1b5e20")">@TagLabel(entity.Tag)</text>
                         <text x="@(x + TreeLayout.EntityWidth / 2)" y="@(y + TreeLayout.EntityHeight / 2 + 4)" text-anchor="middle" font-size="12" font-family="sans-serif">@TruncateForDisplay(entity.Statement)</text>
                     </g>
@@ -76,6 +98,10 @@
     private TreeLayout.Result placement = TreeLayout.Compute(new Tree());
     private EntityId? selected;
     private bool linking;
+    private enum JunctionMode { None, Grouping, Adding, Removing }
+    private JunctionMode junctionMode;
+    private readonly HashSet<EntityId> groupMembers = [];
+    private JunctionId? selectedJunction;
     private string statement = "";
     private string message = "";
     private bool messageIsError;
@@ -83,6 +109,7 @@
     private ElementReference canvasRef;
     private bool focusCanvas;
 
+    private const string JunctionColour = "#e65100";
     private const string SelectionColour = "#1565c0";   // keep in step with --selection in app.css
     private const int MaxDisplayedStatement = 22;
 
@@ -139,11 +166,12 @@
 
     private void DeleteSelected()
     {
-        if (selected is not { } id) return;
+        if (selected is null) { Ungroup(); return; }
+        var id = selected.Value;
         Begin();
         tree.Delete(id);
         selected = null;
-        linking = false;
+        ClearModes();
         Refresh();
         focusCanvas = true;
     }
@@ -179,7 +207,8 @@
         Begin();
         if (!changed) return;
         if (selected is { } id && tree.Entities.All(e => e.Id != id)) selected = null;   // the selected entity may not exist in the restored tree
-        linking = false;
+        ClearModes();
+        if (selectedJunction is { } junction && tree.Junctions.All(j => j.Id != junction)) selectedJunction = null;
         editRevision++;   // the kept statement may differ after the restore, so rebuild the edit box
         Refresh();
         focusCanvas = true;
@@ -188,7 +217,9 @@
     private void ToggleLinking()
     {
         Begin();
-        linking = !linking;
+        var wasLinking = linking;
+        ClearModes();
+        linking = !wasLinking;
         if (linking) Report("Click the entity it is a cause of, or press Escape to cancel.");
         focusCanvas = true;
     }
@@ -196,8 +227,108 @@
     private void Select(EntityId id)
     {
         if (linking && selected is not null) { LinkSelectedTo(id); return; }   // linking an entity to itself is reported as a cycle
-        linking = false;
+        if (junctionMode == JunctionMode.Grouping && selected is { } effect)
+        {
+            if (id != effect && !groupMembers.Remove(id)) groupMembers.Add(id);
+            return;
+        }
+        if (selectedJunction is { } junction && junctionMode != JunctionMode.None) { ChangeJunction(junction, id); return; }
+        ClearModes();
         selected = id;
+        selectedJunction = null;
+    }
+
+    private void SelectJunction(JunctionId id)
+    {
+        Begin();
+        ClearModes();
+        selected = null;
+        selectedJunction = id;
+        focusCanvas = true;
+    }
+
+    private void StartGrouping()
+    {
+        if (selected is null) return;
+        Begin();
+        var wasGrouping = junctionMode == JunctionMode.Grouping;
+        ClearModes();
+        if (wasGrouping) return;
+        junctionMode = JunctionMode.Grouping;
+        Report("Click two or more causes of the selected entity, then apply. Escape cancels.");
+        focusCanvas = true;
+    }
+
+    private void ApplyGrouping()
+    {
+        if (selected is not { } effect) return;
+        Begin();
+        var result = tree.Group(effect, [.. groupMembers]);
+        if (result.Outcome != JunctionOutcome.Done) { Report(Explain(result.Outcome), isError: true); return; }
+        ClearModes();
+        selected = null;
+        selectedJunction = result.Junction!.Id;
+        Report("Grouped.");
+        Refresh();
+        focusCanvas = true;
+    }
+
+    private void StartJunctionMode(JunctionMode mode)
+    {
+        Begin();
+        var wasMode = junctionMode;
+        ClearModes();
+        if (wasMode == mode) return;
+        junctionMode = mode;
+        Report(mode == JunctionMode.Adding ? "Click the entity to add as a cause to this AND-junction." : "Click the cause to take out of this AND-junction.");
+        focusCanvas = true;
+    }
+
+    private void ChangeJunction(JunctionId junction, EntityId entity)
+    {
+        Begin();
+        if (junctionMode == JunctionMode.Removing)
+        {
+            if (!tree.Junctions.First(j => j.Id == junction).Causes.Contains(entity)) { Report("That entity is not in this AND-junction.", isError: true); return; }
+            tree.RemoveFromJunction(junction, entity);
+            if (tree.Junctions.All(j => j.Id != junction)) selectedJunction = null;   // left with one cause, so it dissolved
+            Report("Removed from the AND-junction.");
+        }
+        else
+        {
+            var outcome = tree.AddToJunction(junction, entity);
+            if (outcome != JunctionOutcome.Done) { Report(Explain(outcome), isError: true); return; }
+            Report("Added to the AND-junction.");
+        }
+        ClearModes();
+        Refresh();
+    }
+
+    private void Ungroup()
+    {
+        if (selectedJunction is not { } id) return;
+        Begin();
+        tree.Ungroup(id);
+        selectedJunction = null;
+        ClearModes();
+        Refresh();
+        focusCanvas = true;
+    }
+
+    private static string Explain(JunctionOutcome outcome) => outcome switch
+    {
+        JunctionOutcome.TooFewCauses => "An AND-junction needs at least two causes.",
+        JunctionOutcome.NotACauseOfEffect => "Every grouped entity must already be a cause of the selected entity.",
+        JunctionOutcome.AlreadyInJunction => "That cause is already in an AND-junction for this effect.",
+        JunctionOutcome.WouldCreateCycle => "Rejected: that would create a cycle.",
+        _ => throw new InvalidOperationException($"Unhandled junction outcome {outcome}.")
+    };
+
+    private void ClearModes()
+    {
+        linking = false;
+        junctionMode = JunctionMode.None;
+        groupMembers.Clear();
     }
 
     private void LinkSelectedTo(EntityId effect)
@@ -212,7 +343,7 @@
             default: throw new InvalidOperationException($"Unhandled link outcome {outcome}.");
         }
         Refresh();
-        linking = false;
+        ClearModes();
     }
 
     private void OnKeyDown(KeyboardEventArgs e)
@@ -232,8 +363,8 @@
         {
             case "Tab": AddCause(); break;
             case "Delete": DeleteSelected(); break;
-            case "Escape" when linking: linking = false; Report(""); break;
-            case "Escape": selected = null; break;
+            case "Escape" when linking || junctionMode != JunctionMode.None: ClearModes(); Report(""); break;
+            case "Escape": selected = null; selectedJunction = null; break;
         }
     }
 
@@ -255,12 +386,13 @@
     private void SelectNew(Entity entity)
     {
         selected = entity.Id;
-        linking = false;
+        selectedJunction = null;
+        ClearModes();
         Refresh();
         focusCanvas = true;   // so the keyboard can keep building straight away
     }
 
-    private void Deselect() { selected = null; linking = false; }
+    private void Deselect() { selected = null; selectedJunction = null; ClearModes(); }
     private void Refresh()
     {
         placement = TreeLayout.Compute(tree);
