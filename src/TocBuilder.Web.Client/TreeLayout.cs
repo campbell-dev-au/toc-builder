@@ -28,7 +28,7 @@ public static class TreeLayout
         /// <summary>An arc across the member links just below their effect, with the point to label it at. Points sit on each link's curve, so the arc follows dragged entities.</summary>
         public (string Path, double LabelX, double LabelY) JunctionArc(AndJunction junction)
         {
-            const double t = 0.22;   // how far along each link, measured from the effect
+            const double t = 0.6;   // how far along each link, measured from the effect
             var (effectX, effectY) = Positions[junction.Effect];
             double x2 = effectX + EntityWidth / 2, y2 = effectY + EntityHeight;
             var points = junction.Causes.Select(cause =>

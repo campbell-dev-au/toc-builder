@@ -29,8 +29,8 @@
         }
         @if (SelectedEntity is { } current)
         {
-            <input class="edit" @key="editRevision" value="@current.Statement" @onchange="EditSelected" size="40" aria-label="Selected entity statement" />
-            <select @key="editRevision" value="@current.Tag" @onchange="TagSelected" aria-label="Selected entity tag">
+            <input class="edit" @key="(editRevision, 0)" value="@current.Statement" @onchange="EditSelected" size="40" aria-label="Selected entity statement" />
+            <select @key="(editRevision, 1)" value="@current.Tag" @onchange="TagSelected" aria-label="Selected entity tag">
                 <option value="@EntityTag.None">No tag</option>
                 <option value="@EntityTag.Ude">UDE</option>
                 <option value="@EntityTag.CoreProblem">Core problem</option>
