@@ -2,7 +2,21 @@ namespace TocBuilder.Domain;
 
 public readonly record struct EntityId(int Value);
 
-public sealed record Entity(EntityId Id, string Statement);
+/// <summary>A working annotation the user puts on an Entity. It never restricts what can be linked or edited.</summary>
+public enum EntityTag { None, Ude, CoreProblem }
+
+public sealed record Entity(EntityId Id, string Statement, EntityTag Tag = EntityTag.None);
+
+/// <summary>A derived report of what looks unfinished in a tree. It only reports and never blocks.</summary>
+/// <param name="UdesWithoutCoreProblem">UDEs that no Core problem reaches through Causal links.</param>
+/// <param name="CoreProblemsExplainingNoUde">Core problems that reach no UDE.</param>
+/// <param name="UnconnectedEntities">Entities with no Causal link at all.</param>
+/// <param name="RootCauses">Entities with no cause beneath them but at least one effect above.</param>
+public sealed record TreeSummary(
+    IReadOnlyList<Entity> UdesWithoutCoreProblem,
+    IReadOnlyList<Entity> CoreProblemsExplainingNoUde,
+    IReadOnlyList<Entity> UnconnectedEntities,
+    IReadOnlyList<Entity> RootCauses);
 
 public sealed record CausalLink(EntityId Cause, EntityId Effect);
 
@@ -88,6 +102,26 @@ public sealed class Tree
         _entities[index] = _entities[index] with { Statement = clean };
     }
 
+    public void SetTag(EntityId id, EntityTag tag)
+    {
+        var index = IndexOf(id);
+        if (_entities[index].Tag == tag) return;
+        RecordUndoStep();
+        _entities[index] = _entities[index] with { Tag = tag };
+    }
+
+    public TreeSummary Summarise()
+    {
+        var udes = _entities.Where(e => e.Tag == EntityTag.Ude).ToList();
+        var cores = _entities.Where(e => e.Tag == EntityTag.CoreProblem).ToList();
+        var explained = cores.ToDictionary(c => c.Id, c => ReachableFrom(c.Id));
+        return new TreeSummary(
+            udes.Where(u => !cores.Any(c => explained[c.Id].Contains(u.Id))).ToList(),
+            cores.Where(c => !udes.Any(u => explained[c.Id].Contains(u.Id))).ToList(),
+            _entities.Where(e => !_links.Any(l => l.Cause == e.Id || l.Effect == e.Id)).ToList(),
+            _entities.Where(e => _links.Any(l => l.Cause == e.Id) && !_links.Any(l => l.Effect == e.Id)).ToList());
+    }
+
     public void Delete(EntityId id)
     {
         var index = IndexOf(id);
@@ -136,6 +170,17 @@ public sealed class Tree
         var index = _entities.FindIndex(e => e.Id == id);
         if (index < 0) throw new ArgumentException($"No entity with id {id.Value} in this tree.", nameof(id));
         return index;
+    }
+
+    /// <summary>Every Entity that <paramref name="from"/> reaches through any chain of Causal links, following cause to effect.</summary>
+    private HashSet<EntityId> ReachableFrom(EntityId from)
+    {
+        var seen = new HashSet<EntityId>();
+        var pending = new Stack<EntityId>([from]);
+        while (pending.TryPop(out var current))
+            foreach (var link in _links.Where(l => l.Cause == current))
+                if (seen.Add(link.Effect)) pending.Push(link.Effect);
+        return seen;
     }
 
     /// <summary>True when <paramref name="from"/> reaches <paramref name="to"/> through any chain of Causal links, following cause to effect.</summary>
