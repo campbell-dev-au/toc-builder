@@ -12,9 +12,7 @@
     <div class="toolbar">
         <button type="button" @onclick="AddCause" disabled="@(selected is null)">Add cause (Tab)</button>
         <button type="button" @onclick="AddEffect" disabled="@(selected is null)">Add effect</button>
-        <button type="button" @onclick="ToggleLinking" disabled="@(selected is null)" aria-pressed="@linking">
-            @(linking ? "Click the effect to link to… (Esc cancels)" : "Link: selected is a cause of…")
-        </button>
+        <button type="button" @onclick="ToggleLinking" disabled="@(selected is null)" aria-pressed="@(linking ? "true" : "false")">Link: selected is a cause of…</button>
         <button type="button" @onclick="DeleteSelected" disabled="@(selected is null)">Delete (Del)</button>
         @if (SelectedEntity is { } current)
         {
@@ -78,7 +76,7 @@
     // The text typed in the "add entity" box names the next entity added, otherwise the default is used.
     private string TakeStatement(string fallback)
     {
-        var text = string.IsNullOrWhiteSpace(statement) ? fallback : statement.Trim();
+        var text = string.IsNullOrWhiteSpace(statement) ? fallback : statement;
         statement = "";
         return text;
     }
@@ -110,6 +108,7 @@
         Begin();
         tree.Delete(id);
         selected = null;
+        linking = false;
         Relayout();
         focusCanvas = true;
     }
@@ -125,7 +124,7 @@
             editRevision++;
             return;
         }
-        tree.EditStatement(id, text.Trim());
+        tree.EditStatement(id, text);
         Relayout();
     }
 
@@ -133,12 +132,13 @@
     {
         Begin();
         linking = !linking;
+        if (linking) Report("Click the entity it is a cause of, or press Escape to cancel.");
         focusCanvas = true;
     }
 
     private void Select(EntityId id)
     {
-        if (linking && selected is { } cause && cause != id) { LinkSelectedTo(id); return; }
+        if (linking && selected is not null) { LinkSelectedTo(id); return; }   // linking an entity to itself is reported as a cycle
         linking = false;
         selected = id;
     }
@@ -164,7 +164,7 @@
         {
             case "Tab": AddCause(); break;
             case "Delete": DeleteSelected(); break;
-            case "Escape" when linking: linking = false; break;
+            case "Escape" when linking: linking = false; Report(""); break;
             case "Escape": selected = null; break;
         }
     }
