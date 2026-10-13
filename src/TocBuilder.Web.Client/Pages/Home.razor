@@ -19,10 +19,16 @@
         @if (SelectedEntity is { } current)
         {
             <input class="edit" @key="editRevision" value="@current.Statement" @onchange="EditSelected" size="40" aria-label="Selected entity statement" />
+            <select @key="editRevision" value="@current.Tag" @onchange="TagSelected" aria-label="Selected entity tag">
+                <option value="@EntityTag.None">No tag</option>
+                <option value="@EntityTag.Ude">UDE</option>
+                <option value="@EntityTag.CoreProblem">Core problem</option>
+            </select>
         }
         <span class="message @(messageIsError ? "error" : "")" role="status">@message</span>
     </div>
 
+    <div class="workspace">
     <div class="canvas" tabindex="0" @ref="canvasRef" @onkeydown="OnKeyDown" @onkeydown:preventDefault="@(selected is not null)">
         @if (tree.Entities.Count == 0)
         {
@@ -47,11 +53,21 @@
                     <g @onclick="() => Select(entity.Id)" @onclick:stopPropagation style="cursor:pointer">
                         <rect x="@x" y="@y" width="@TreeLayout.EntityWidth" height="@TreeLayout.EntityHeight" rx="6"
                               fill="#f4f6fa" stroke="@(isSelected ? SelectionColour : "#888")" stroke-width="@(isSelected ? 3 : 1.2)" />
+                        <text x="@(x + 6)" y="@(y - 4)" font-size="11" font-weight="bold" font-family="sans-serif" fill="@(entity.Tag == EntityTag.Ude ? "#b71c1c" : "#1b5e20")">@TagLabel(entity.Tag)</text>
                         <text x="@(x + TreeLayout.EntityWidth / 2)" y="@(y + TreeLayout.EntityHeight / 2 + 4)" text-anchor="middle" font-size="12" font-family="sans-serif">@TruncateForDisplay(entity.Statement)</text>
                     </g>
                 }
             </svg>
         }
+    </div>
+
+    <aside class="summary" aria-label="Tree summary">
+        <h2>Tree summary</h2>
+        @SummarySection("UDEs with no path to a Core problem", summary.UdesWithoutCoreProblem)
+        @SummarySection("Core problems that explain no UDE", summary.CoreProblemsExplainingNoUde)
+        @SummarySection("Unconnected entities", summary.UnconnectedEntities)
+        @SummarySection("Root causes", summary.RootCauses)
+    </aside>
     </div>
 </div>
 
@@ -69,6 +85,23 @@
 
     private const string SelectionColour = "#1565c0";   // keep in step with --selection in app.css
     private const int MaxDisplayedStatement = 22;
+
+    private TreeSummary summary = new Tree().Summarise();
+
+    private static string TagLabel(EntityTag tag) => tag switch { EntityTag.Ude => "UDE", EntityTag.CoreProblem => "CORE PROBLEM", _ => "" };
+
+    private RenderFragment SummarySection(string title, IReadOnlyList<Entity> entities) => @<section>
+        <h3>@title (@entities.Count)</h3>
+        @if (entities.Count > 0)
+        {
+            <ul>
+                @foreach (var entity in entities)
+                {
+                    <li><button type="button" class="link" @onclick="() => Select(entity.Id)">@entity.Statement</button></li>
+                }
+            </ul>
+        }
+    </section>;
 
     private Entity? SelectedEntity => selected is { } id ? tree.Entities.First(e => e.Id == id) : null;
 
@@ -111,7 +144,7 @@
         tree.Delete(id);
         selected = null;
         linking = false;
-        Relayout();
+        Refresh();
         focusCanvas = true;
     }
 
@@ -127,7 +160,15 @@
             return;
         }
         tree.EditStatement(id, text);
-        Relayout();
+        Refresh();
+    }
+
+    private void TagSelected(ChangeEventArgs e)
+    {
+        if (selected is not { } id || !Enum.TryParse<EntityTag>(e.Value?.ToString(), out var tag)) return;
+        Begin();
+        tree.SetTag(id, tag);
+        Refresh();
     }
 
     private void Undo() => Travel(tree.Undo());
@@ -140,7 +181,7 @@
         if (selected is { } id && tree.Entities.All(e => e.Id != id)) selected = null;   // the selected entity may not exist in the restored tree
         linking = false;
         editRevision++;   // the kept statement may differ after the restore, so rebuild the edit box
-        Relayout();
+        Refresh();
         focusCanvas = true;
     }
 
@@ -170,7 +211,7 @@
             case LinkOutcome.WouldCreateCycle: Report("Rejected: that link would create a cycle.", isError: true); break;
             default: throw new InvalidOperationException($"Unhandled link outcome {outcome}.");
         }
-        Relayout();
+        Refresh();
         linking = false;
     }
 
@@ -215,10 +256,14 @@
     {
         selected = entity.Id;
         linking = false;
-        Relayout();
+        Refresh();
         focusCanvas = true;   // so the keyboard can keep building straight away
     }
 
     private void Deselect() { selected = null; linking = false; }
-    private void Relayout() => placement = TreeLayout.Compute(tree);
+    private void Refresh()
+    {
+        placement = TreeLayout.Compute(tree);
+        summary = tree.Summarise();
+    }
 }

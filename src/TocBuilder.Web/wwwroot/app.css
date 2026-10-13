@@ -32,3 +32,10 @@ h1:focus {
 .editor .toolbar button[aria-pressed="true"] { background: var(--selection); color: #fff; }
 .editor .message { color: #555; }
 .editor .message.error { color: #b71c1c; }
+.editor .workspace { display: flex; gap: 1rem; align-items: flex-start; }
+.editor .workspace .canvas { flex: 1; min-width: 0; }
+.editor .summary { width: 18rem; flex-shrink: 0; font-size: 0.9rem; }
+.editor .summary h2 { font-size: 1.1rem; margin: 0 0 0.5rem; }
+.editor .summary h3 { font-size: 0.9rem; margin: 0.75rem 0 0.25rem; }
+.editor .summary ul { margin: 0; padding-left: 1.2rem; }
+.editor .summary button.link { background: none; border: none; padding: 0; color: var(--selection); text-align: left; cursor: pointer; text-decoration: underline; }

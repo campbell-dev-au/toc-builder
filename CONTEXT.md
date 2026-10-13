@@ -39,7 +39,7 @@ The Entity the user tags as the cause to act on, typically one driving many UDEs
 _Avoid_: Key cause, main cause
 
 **Root cause**:
-An Entity with no cause beneath it. Derived from structure, never tagged.
+An Entity with no cause beneath it but at least one effect above it (an Entity with no Causal links at all is reported as unconnected instead). Derived from structure, never tagged.
 _Avoid_: Core problem (a different concept), origin
 
 **Scope**:
