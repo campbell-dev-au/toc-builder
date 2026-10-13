@@ -1,5 +1,3 @@
-using TocBuilder.Domain;
-
 namespace TocBuilder.Domain.Tests;
 
 public class AddingCausesTests
