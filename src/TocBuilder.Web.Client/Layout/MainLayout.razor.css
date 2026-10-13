@@ -1,4 +1,6 @@
-.top-row { height: 3rem; display: flex; align-items: center; border-bottom: 1px solid #d6d5d5; background: #f7f7f7; }
+.top-row { height: 3rem; display: flex; align-items: center; padding: 0 1.5rem; border-bottom: 1px solid #d6d5d5; background: #f7f7f7; }
+
+main { padding: 0 1.5rem; }
 
 #blazor-error-ui {
     color-scheme: light only;
