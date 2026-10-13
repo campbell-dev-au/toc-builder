@@ -63,7 +63,7 @@
 
     <aside class="summary" aria-label="Tree summary">
         <h2>Tree summary</h2>
-        @SummarySection("UDEs with no path from a Core problem", summary.UdesWithoutCoreProblem)
+        @SummarySection("UDEs with no path to a Core problem", summary.UdesWithoutCoreProblem)
         @SummarySection("Core problems that explain no UDE", summary.CoreProblemsExplainingNoUde)
         @SummarySection("Unconnected entities", summary.UnconnectedEntities)
         @SummarySection("Root causes", summary.RootCauses)
@@ -144,7 +144,7 @@
         tree.Delete(id);
         selected = null;
         linking = false;
-        Relayout();
+        Refresh();
         focusCanvas = true;
     }
 
@@ -160,7 +160,7 @@
             return;
         }
         tree.EditStatement(id, text);
-        Relayout();
+        Refresh();
     }
 
     private void TagSelected(ChangeEventArgs e)
@@ -168,7 +168,7 @@
         if (selected is not { } id || !Enum.TryParse<EntityTag>(e.Value?.ToString(), out var tag)) return;
         Begin();
         tree.SetTag(id, tag);
-        Relayout();
+        Refresh();
     }
 
     private void Undo() => Travel(tree.Undo());
@@ -181,7 +181,7 @@
         if (selected is { } id && tree.Entities.All(e => e.Id != id)) selected = null;   // the selected entity may not exist in the restored tree
         linking = false;
         editRevision++;   // the kept statement may differ after the restore, so rebuild the edit box
-        Relayout();
+        Refresh();
         focusCanvas = true;
     }
 
@@ -211,7 +211,7 @@
             case LinkOutcome.WouldCreateCycle: Report("Rejected: that link would create a cycle.", isError: true); break;
             default: throw new InvalidOperationException($"Unhandled link outcome {outcome}.");
         }
-        Relayout();
+        Refresh();
         linking = false;
     }
 
@@ -256,12 +256,12 @@
     {
         selected = entity.Id;
         linking = false;
-        Relayout();
+        Refresh();
         focusCanvas = true;   // so the keyboard can keep building straight away
     }
 
     private void Deselect() { selected = null; linking = false; }
-    private void Relayout()
+    private void Refresh()
     {
         placement = TreeLayout.Compute(tree);
         summary = tree.Summarise();

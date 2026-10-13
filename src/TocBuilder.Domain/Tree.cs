@@ -114,10 +114,10 @@ public sealed class Tree
     {
         var udes = _entities.Where(e => e.Tag == EntityTag.Ude).ToList();
         var cores = _entities.Where(e => e.Tag == EntityTag.CoreProblem).ToList();
-        var explained = cores.ToDictionary(c => c.Id, c => ReachableFrom(c.Id));
+        var reached = cores.ToDictionary(c => c.Id, c => ReachableFrom(c.Id));
         return new TreeSummary(
-            udes.Where(u => !cores.Any(c => explained[c.Id].Contains(u.Id))).ToList(),
-            cores.Where(c => !udes.Any(u => explained[c.Id].Contains(u.Id))).ToList(),
+            udes.Where(u => !cores.Any(c => reached[c.Id].Contains(u.Id))).ToList(),
+            cores.Where(c => !udes.Any(u => reached[c.Id].Contains(u.Id))).ToList(),
             _entities.Where(e => !_links.Any(l => l.Cause == e.Id || l.Effect == e.Id)).ToList(),
             _entities.Where(e => _links.Any(l => l.Cause == e.Id) && !_links.Any(l => l.Effect == e.Id)).ToList());
     }
@@ -184,16 +184,5 @@ public sealed class Tree
     }
 
     /// <summary>True when <paramref name="from"/> reaches <paramref name="to"/> through any chain of Causal links, following cause to effect.</summary>
-    private bool LeadsTo(EntityId from, EntityId to)
-    {
-        var seen = new HashSet<EntityId>();
-        var pending = new Stack<EntityId>([from]);
-        while (pending.TryPop(out var current))
-        {
-            if (current == to) return true;
-            if (!seen.Add(current)) continue;
-            foreach (var link in _links.Where(l => l.Cause == current)) pending.Push(link.Effect);
-        }
-        return false;
-    }
+    private bool LeadsTo(EntityId from, EntityId to) => from == to || ReachableFrom(from).Contains(to);
 }
