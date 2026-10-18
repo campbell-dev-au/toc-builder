@@ -86,6 +86,19 @@ public sealed class Tree
     public IReadOnlyList<AndJunction> Junctions => _junctions;
     public IReadOnlyList<Reservation> Reservations => _reservations;
 
+    /// <summary>Rebuilds a tree from saved state. The result has no undo history.</summary>
+    internal static Tree FromState(IEnumerable<Entity> entities, IEnumerable<CausalLink> links, IEnumerable<AndJunction> junctions, IEnumerable<Reservation> reservations, int nextId, int nextJunctionId, int nextReservationId)
+    {
+        var tree = new Tree { _nextId = nextId, _nextJunctionId = nextJunctionId, _nextReservationId = nextReservationId };
+        tree._entities.AddRange(entities);
+        tree._links.AddRange(links);
+        tree._junctions.AddRange(junctions);
+        tree._reservations.AddRange(reservations);
+        return tree;
+    }
+
+    internal (int NextId, int NextJunctionId, int NextReservationId) NextIds => (_nextId, _nextJunctionId, _nextReservationId);
+
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
 

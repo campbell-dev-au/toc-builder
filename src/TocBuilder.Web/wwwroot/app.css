@@ -47,3 +47,6 @@ h1:focus {
 .editor .reservations li { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; margin-bottom: 0.4rem; }
 .editor .reservations .category { flex: 1 0 100%; font-weight: 600; }
 .editor .reservations input { flex: 1; min-width: 6rem; }
+
+.editor .library { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.editor .library .import input { margin-left: 0.25rem; }
