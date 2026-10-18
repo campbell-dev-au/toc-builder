@@ -1,9 +1,32 @@
 @page "/"
 @using TocBuilder.Domain
+@inject TreeLibrary Library
 
 <PageTitle>TOC Builder</PageTitle>
 
 <div class="editor">
+    <div class="library" role="group" aria-label="Trees">
+        <select value="@currentId" @onchange="OpenTree" aria-label="Open tree">
+            @foreach (var saved in trees)
+            {
+                <option value="@saved.Id">@saved.Name</option>
+            }
+        </select>
+        <input @key="(editRevision, 2)" value="@treeName" @onchange="RenameTree" aria-label="Tree name" />
+        <button type="button" @onclick="NewTree">New tree</button>
+        @if (confirmingDelete)
+        {
+            <button type="button" @onclick="DeleteTree">Confirm delete</button>
+            <button type="button" @onclick="() => confirmingDelete = false">Cancel</button>
+        }
+        else
+        {
+            <button type="button" @onclick="() => confirmingDelete = true">Delete tree</button>
+        }
+        <button type="button" @onclick="ExportTree">Export JSON</button>
+        <label class="import">Import JSON <InputFile OnChange="ImportTree" accept=".json,application/json" /></label>
+    </div>
+
     <form class="add" @onsubmit="AddEntity">
         <input @bind="statement" @bind:event="oninput" placeholder="Describe an entity, e.g. an undesirable effect" size="52" aria-label="Entity statement" />
         <button type="submit">Add entity</button>
@@ -142,7 +165,7 @@
 </div>
 
 @code {
-    private readonly Tree tree = new();
+    private Tree tree = new();
     private TreeLayout.Result placement = TreeLayout.Compute(new Tree());
     private EntityId? selected;
     private bool linking;
@@ -163,6 +186,145 @@
     private const int MaxDisplayedStatement = 22;
 
     private TreeSummary summary = new Tree().Summarise();
+
+    private List<SavedTree> trees = [];
+    private string currentId = "";
+    private string treeName = "";
+    private bool confirmingDelete;
+    private bool unsaved;   // set by Refresh after a change, saved once the page has rendered
+
+    protected override async Task OnInitializedAsync()
+    {
+        trees = await Library.ListAsync();
+        var preferred = await Library.CurrentIdAsync();
+        var candidates = trees.OrderBy(t => t.Id == preferred ? 0 : 1).ToList();
+        foreach (var candidate in candidates)
+        {
+            if (await TryOpen(candidate)) return;
+        }
+        await CreateTree("Untitled tree");
+    }
+
+    private async Task<bool> TryOpen(SavedTree saved)
+    {
+        var result = await Library.LoadAsync(saved.Id);
+        if (result.Tree is null)
+        {
+            Report($"Could not open \"{saved.Name}\": {result.Message}", isError: true);
+            return false;
+        }
+        Show(saved.Id, saved.Name, result.Tree);
+        await Library.SetCurrentAsync(saved.Id);
+        return true;
+    }
+
+    // Swaps the open tree. The new tree is already stored, so nothing is saved.
+    private void Show(string id, string name, Tree opened)
+    {
+        tree = opened;
+        currentId = id;
+        treeName = name;
+        confirmingDelete = false;
+        ClearSelection();
+        ClearModes();
+        statement = "";
+        editRevision++;
+        Refresh();
+        unsaved = false;
+    }
+
+    private async Task CreateTree(string name, Tree? content = null)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        var created = content ?? new Tree();
+        await Library.SaveAsync(id, name, created);
+        trees = await Library.ListAsync();
+        Show(id, name, created);
+        await Library.SetCurrentAsync(id);
+    }
+
+    private async Task NewTree()
+    {
+        await SaveIfNeeded();
+        Begin();
+        await CreateTree("Untitled tree");
+    }
+
+    private async Task OpenTree(ChangeEventArgs e)
+    {
+        await SaveIfNeeded();
+        Begin();
+        var saved = trees.FirstOrDefault(t => t.Id == e.Value?.ToString());
+        if (saved is not null) await TryOpen(saved);
+        editRevision++;   // if opening failed, the list must show the tree that is still open
+    }
+
+    private async Task RenameTree(ChangeEventArgs e)
+    {
+        Begin();
+        var name = e.Value?.ToString()?.Trim() ?? "";
+        if (name == "")
+        {
+            Report("A tree needs a name.", isError: true);
+            editRevision++;
+            return;
+        }
+        treeName = name;
+        await Library.SaveAsync(currentId, treeName, tree);
+        trees = await Library.ListAsync();
+    }
+
+    private async Task DeleteTree()
+    {
+        Begin();
+        await Library.DeleteAsync(currentId);
+        trees = await Library.ListAsync();
+        foreach (var remaining in trees)
+        {
+            if (await TryOpen(remaining)) return;
+        }
+        await CreateTree("Untitled tree");
+    }
+
+    private async Task ExportTree()
+    {
+        Begin();
+        var fileName = string.Concat(treeName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)) + ".toc.json";
+        await Library.DownloadAsync(fileName, TreeSerializer.Export(treeName, tree));
+    }
+
+    // A refused file never touches the open tree: nothing changes until the import has succeeded.
+    private async Task ImportTree(InputFileChangeEventArgs e)
+    {
+        Begin();
+        string json;
+        try
+        {
+            using var reader = new StreamReader(e.File.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024));
+            json = await reader.ReadToEndAsync();
+        }
+        catch (IOException ex)
+        {
+            Report($"Could not read the file: {ex.Message}", isError: true);
+            return;
+        }
+        var result = TreeSerializer.Import(json);
+        if (result.Tree is null)
+        {
+            Report(result.Message ?? "The file could not be imported.", isError: true);
+            return;
+        }
+        await SaveIfNeeded();
+        await CreateTree(result.Name ?? "Imported tree", result.Tree);
+        Report($"Imported \"{treeName}\".");
+    }
+
+    private async Task SaveIfNeeded()
+    {
+        if (!unsaved) return;
+        unsaved = false;
+        await Library.SaveAsync(currentId, treeName, tree);
+    }
 
     private static string TagLabel(EntityTag tag) => tag switch { EntityTag.Ude => "UDE", EntityTag.CoreProblem => "CORE PROBLEM", _ => "" };
 
@@ -497,6 +659,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        await SaveIfNeeded();
         if (!focusCanvas) return;
         focusCanvas = false;
         await canvasRef.FocusAsync();
@@ -525,6 +688,7 @@
     private void ClearSelection() { selected = null; selectedJunction = null; selectedLink = null; }
     private void Refresh()
     {
+        unsaved = true;
         placement = TreeLayout.Compute(tree);
         summary = tree.Summarise();
     }
