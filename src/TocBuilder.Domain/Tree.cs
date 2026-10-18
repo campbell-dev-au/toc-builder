@@ -12,11 +12,13 @@ public sealed record Entity(EntityId Id, string Statement, EntityTag Tag = Entit
 /// <param name="CoreProblemsExplainingNoUde">Core problems that reach no UDE.</param>
 /// <param name="UnconnectedEntities">Entities with no Causal link at all.</param>
 /// <param name="RootCauses">Entities with no cause beneath them but at least one effect above.</param>
+/// <param name="OpenReservations">Reservations still open, in the order they were raised. Resolved and dismissed ones are left out.</param>
 public sealed record TreeSummary(
     IReadOnlyList<Entity> UdesWithoutCoreProblem,
     IReadOnlyList<Entity> CoreProblemsExplainingNoUde,
     IReadOnlyList<Entity> UnconnectedEntities,
-    IReadOnlyList<Entity> RootCauses);
+    IReadOnlyList<Entity> RootCauses,
+    IReadOnlyList<Reservation> OpenReservations);
 
 public sealed record CausalLink(EntityId Cause, EntityId Effect);
 
@@ -31,22 +33,58 @@ public enum JunctionOutcome { Done, TooFewCauses, NotACauseOfEffect, AlreadyInJu
 
 public sealed record JunctionResult(JunctionOutcome Outcome, AndJunction? Junction = null);
 
+/// <summary>The Categories of Legitimate Reservation: the standard challenges used to test whether a Causal link or Entity holds.</summary>
+public enum ClrCategory
+{
+    Clarity,
+    EntityExistence,
+    CausalityExistence,
+    CauseInsufficiency,
+    AdditionalCause,
+    CauseEffectReversal,
+    PredictedEffectExistence,
+    Tautology
+}
+
+public enum ReservationState { Open, Resolved, Dismissed }
+
+public readonly record struct ReservationId(int Value);
+
+/// <summary>What a Reservation is raised against. A Reservation on an AND-junction attaches to the junction as a whole, not to any one of its causes.</summary>
+public abstract record ReservationTarget;
+
+public sealed record OnEntity(EntityId Entity) : ReservationTarget;
+
+public sealed record OnLink(CausalLink Link) : ReservationTarget;
+
+public sealed record OnJunction(JunctionId Junction) : ReservationTarget;
+
+/// <summary>A recorded challenge against one target under one CLR category. It is advisory: it never blocks any edit.</summary>
+public sealed record Reservation(ReservationId Id, ReservationTarget Target, ClrCategory Category, ReservationState State, string Note);
+
+public enum ReservationOutcome { Raised, AlreadyRaised }
+
+public sealed record ReservationResult(ReservationOutcome Outcome, Reservation? Reservation = null);
+
 public sealed class Tree
 {
     private readonly List<Entity> _entities = [];
     private readonly List<CausalLink> _links = [];
     private readonly List<AndJunction> _junctions = [];
+    private readonly List<Reservation> _reservations = [];
     private int _nextId = 1;
     private int _nextJunctionId = 1;
+    private int _nextReservationId = 1;
     private readonly Stack<Snapshot> _undo = new();
     private readonly Stack<Snapshot> _redo = new();
 
     /// <summary>The whole editable state of a tree. Every tree-changing command is undone by restoring one of these, so commands added later are undoable as long as their state lives here.</summary>
-    private sealed record Snapshot(Entity[] Entities, CausalLink[] Links, AndJunction[] Junctions, int NextId, int NextJunctionId);
+    private sealed record Snapshot(Entity[] Entities, CausalLink[] Links, AndJunction[] Junctions, Reservation[] Reservations, int NextId, int NextJunctionId, int NextReservationId);
 
     public IReadOnlyList<Entity> Entities => _entities;
     public IReadOnlyList<CausalLink> Links => _links;
     public IReadOnlyList<AndJunction> Junctions => _junctions;
+    public IReadOnlyList<Reservation> Reservations => _reservations;
 
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
@@ -131,7 +169,8 @@ public sealed class Tree
             udes.Where(u => !cores.Any(c => reached[c.Id].Contains(u.Id))).ToList(),
             cores.Where(c => !udes.Any(u => reached[c.Id].Contains(u.Id))).ToList(),
             _entities.Where(e => !_links.Any(l => l.Cause == e.Id || l.Effect == e.Id)).ToList(),
-            _entities.Where(e => _links.Any(l => l.Cause == e.Id) && !_links.Any(l => l.Effect == e.Id)).ToList());
+            _entities.Where(e => _links.Any(l => l.Cause == e.Id) && !_links.Any(l => l.Effect == e.Id)).ToList(),
+            _reservations.Where(r => r.State == ReservationState.Open).ToList());
     }
 
     public void Delete(EntityId id)
@@ -143,6 +182,7 @@ public sealed class Tree
         _junctions.RemoveAll(j => j.Effect == id);
         foreach (var junction in _junctions.Where(j => j.Causes.Contains(id)).ToArray())
             Shrink(junction, id);
+        PruneReservations();
     }
 
     /// <summary>Groups existing causes of <paramref name="effect"/> into one AND-junction. Their Causal links are kept.</summary>
@@ -182,6 +222,7 @@ public sealed class Tree
         var index = JunctionIndex(junctionId);
         RecordUndoStep();
         _junctions.RemoveAt(index);
+        PruneReservations();
     }
 
     /// <summary>Takes one cause out of a junction, keeping its Causal link. A junction left with a single cause is dissolved.</summary>
@@ -191,7 +232,53 @@ public sealed class Tree
         if (!junction.Causes.Contains(cause)) throw new ArgumentException($"Entity {cause.Value} is not in junction {junctionId.Value}.", nameof(cause));
         RecordUndoStep();
         Shrink(junction, cause);
+        PruneReservations();
     }
+
+    public ReservationResult RaiseReservation(ReservationTarget target, ClrCategory category)
+    {
+        if (!TargetExists(target)) throw new ArgumentException("That target is not in this tree.", nameof(target));
+        var existing = _reservations.FirstOrDefault(r => r.Target == target && r.Category == category);
+        if (existing is not null) return new ReservationResult(ReservationOutcome.AlreadyRaised, existing);
+        RecordUndoStep();
+        var reservation = new Reservation(new ReservationId(_nextReservationId++), target, category, ReservationState.Open, "");
+        _reservations.Add(reservation);
+        return new ReservationResult(ReservationOutcome.Raised, reservation);
+    }
+
+    public void SetReservationState(ReservationId id, ReservationState state)
+    {
+        var index = ReservationIndex(id);
+        if (_reservations[index].State == state) return;
+        RecordUndoStep();
+        _reservations[index] = _reservations[index] with { State = state };
+    }
+
+    public void SetReservationNote(ReservationId id, string note)
+    {
+        var index = ReservationIndex(id);
+        if (_reservations[index].Note == note) return;
+        RecordUndoStep();
+        _reservations[index] = _reservations[index] with { Note = note };
+    }
+
+    private int ReservationIndex(ReservationId id)
+    {
+        var index = _reservations.FindIndex(r => r.Id == id);
+        if (index < 0) throw new ArgumentException($"No reservation with id {id.Value} in this tree.", nameof(id));
+        return index;
+    }
+
+    /// <summary>Drops the Reservations whose target no longer exists. A junction's Reservations go with the junction, even when only its causes are left.</summary>
+    private void PruneReservations() => _reservations.RemoveAll(r => !TargetExists(r.Target));
+
+    private bool TargetExists(ReservationTarget target) => target switch
+    {
+        OnEntity entity => _entities.Any(e => e.Id == entity.Entity),
+        OnLink link => _links.Contains(link.Link),
+        OnJunction junction => _junctions.Any(j => j.Id == junction.Junction),
+        _ => throw new ArgumentException($"Unknown reservation target {target.GetType().Name}.", nameof(target))
+    };
 
     private bool InJunctionOf(EntityId effect, EntityId cause) =>
         _junctions.Any(j => j.Effect == effect && j.Causes.Contains(cause));
@@ -228,7 +315,7 @@ public sealed class Tree
         _redo.Clear();
     }
 
-    private Snapshot Capture() => new([.. _entities], [.. _links], [.. _junctions], _nextId, _nextJunctionId);
+    private Snapshot Capture() => new([.. _entities], [.. _links], [.. _junctions], [.. _reservations], _nextId, _nextJunctionId, _nextReservationId);
 
     private void Restore(Snapshot snapshot)
     {
@@ -238,8 +325,11 @@ public sealed class Tree
         _links.AddRange(snapshot.Links);
         _junctions.Clear();
         _junctions.AddRange(snapshot.Junctions);
+        _reservations.Clear();
+        _reservations.AddRange(snapshot.Reservations);
         _nextId = snapshot.NextId;
         _nextJunctionId = snapshot.NextJunctionId;
+        _nextReservationId = snapshot.NextReservationId;
     }
 
     private static string Clean(string statement)
