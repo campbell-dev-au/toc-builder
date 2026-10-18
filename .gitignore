@@ -483,3 +483,4 @@ $RECYCLE.BIN/
 
 # Agent skills are installed locally (see README); only skills-lock.json is committed
 .agents/
+.claude/
