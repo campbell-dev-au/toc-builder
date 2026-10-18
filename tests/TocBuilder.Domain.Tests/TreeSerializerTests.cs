@@ -96,4 +96,48 @@ public class TreeSerializerTests
 
         Assert.Equal(ImportOutcome.Corrupt, result.Outcome);
     }
+
+    [Theory]
+    [InlineData("\"entities\": [", "\"entities\": [null,")]
+    [InlineData("\"tag\": \"Ude\"", "\"tag\": 99")]
+    [InlineData("\"name\": \"T\"", "\"name\": \"  \"")]
+    [InlineData("\"category\": \"Clarity\"", "\"category\": \"Nonsense\"")]
+    public void A_file_with_a_malformed_value_is_refused_as_corrupt(string find, string replace)
+    {
+        var json = TreeSerializer.Export("T", RichTree());
+        Assert.Contains(find, json);
+
+        var result = TreeSerializer.Import(json.Replace(find, replace));
+
+        Assert.Equal(ImportOutcome.Corrupt, result.Outcome);
+        Assert.Null(result.Tree);
+    }
+
+    [Fact]
+    public void A_file_whose_links_form_a_cycle_a_duplicate_or_a_self_link_is_refused_as_corrupt()
+    {
+        var tree = new Tree();
+        var a = tree.AddEntity("A");
+        var b = tree.AddCause(a.Id, "B");
+        var json = TreeSerializer.Export("T", tree);
+        var link = "{\n      \"cause\": 2,\n      \"effect\": 1\n    }";
+        Assert.Contains(link, json);
+
+        var cycle = json.Replace(link, link + ", " + link.Replace("\"cause\": 2", "\"cause\": 1").Replace("\"effect\": 1", "\"effect\": 2"));
+        var duplicate = json.Replace(link, link + ", " + link);
+        var self = json.Replace(link, link.Replace("\"cause\": 2", "\"cause\": 1"));
+
+        Assert.All([cycle, duplicate, self], bad => Assert.Equal(ImportOutcome.Corrupt, TreeSerializer.Import(bad).Outcome));
+    }
+
+    [Fact]
+    public void A_file_with_a_junction_that_breaks_the_junction_rules_is_refused_as_corrupt()
+    {
+        var json = TreeSerializer.Export("T", RichTree());
+        Assert.Contains("\"causes\": [", json);
+
+        var underSized = System.Text.RegularExpressions.Regex.Replace(json, "\"causes\": \\[[^\\]]*\\]", "\"causes\": [2]");
+
+        Assert.Equal(ImportOutcome.Corrupt, TreeSerializer.Import(underSized).Outcome);
+    }
 }

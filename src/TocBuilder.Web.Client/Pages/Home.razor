@@ -323,7 +323,15 @@
     {
         if (!unsaved) return;
         unsaved = false;
-        await Library.SaveAsync(currentId, treeName, tree);
+        try
+        {
+            await Library.SaveAsync(currentId, treeName, tree);
+        }
+        catch (JSException ex)   // e.g. storage full or disabled; the next change tries again (leaving the flag set would retry on every render)
+        {
+            Report($"Could not save to this browser: {ex.Message} Export the tree to keep it.", isError: true);
+            StateHasChanged();
+        }
     }
 
     private static string TagLabel(EntityTag tag) => tag switch { EntityTag.Ude => "UDE", EntityTag.CoreProblem => "CORE PROBLEM", _ => "" };

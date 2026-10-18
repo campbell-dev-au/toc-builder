@@ -11,6 +11,7 @@ public sealed class TreeLibrary(IJSRuntime js)
 {
     private const string IndexKey = "toc-builder:index";
     private const string CurrentKey = "toc-builder:current";
+    private readonly SemaphoreSlim writes = new(1, 1);   // the index is read, changed and written back across awaits, so writers take turns
     private static string TreeKey(string id) => $"toc-builder:tree:{id}";
 
     public async Task<List<SavedTree>> ListAsync()
@@ -36,20 +37,30 @@ public sealed class TreeLibrary(IJSRuntime js)
     /// <summary>Writes the tree and records its name in the list, adding it when new.</summary>
     public async Task SaveAsync(string id, string name, Tree tree)
     {
-        await js.InvokeVoidAsync("localStorage.setItem", TreeKey(id), TreeSerializer.Export(name, tree));
-        var list = await ListAsync();
-        var index = list.FindIndex(t => t.Id == id);
-        if (index < 0) list.Add(new SavedTree(id, name));
-        else list[index] = new SavedTree(id, name);
-        await js.InvokeVoidAsync("localStorage.setItem", IndexKey, JsonSerializer.Serialize(list));
+        await writes.WaitAsync();
+        try
+        {
+            await js.InvokeVoidAsync("localStorage.setItem", TreeKey(id), TreeSerializer.Export(name, tree));
+            var list = await ListAsync();
+            var index = list.FindIndex(t => t.Id == id);
+            if (index < 0) list.Add(new SavedTree(id, name));
+            else list[index] = new SavedTree(id, name);
+            await js.InvokeVoidAsync("localStorage.setItem", IndexKey, JsonSerializer.Serialize(list));
+        }
+        finally { writes.Release(); }
     }
 
     public async Task DeleteAsync(string id)
     {
-        await js.InvokeVoidAsync("localStorage.removeItem", TreeKey(id));
-        var list = await ListAsync();
-        list.RemoveAll(t => t.Id == id);
-        await js.InvokeVoidAsync("localStorage.setItem", IndexKey, JsonSerializer.Serialize(list));
+        await writes.WaitAsync();
+        try
+        {
+            await js.InvokeVoidAsync("localStorage.removeItem", TreeKey(id));
+            var list = await ListAsync();
+            list.RemoveAll(t => t.Id == id);
+            await js.InvokeVoidAsync("localStorage.setItem", IndexKey, JsonSerializer.Serialize(list));
+        }
+        finally { writes.Release(); }
     }
 
     public ValueTask DownloadAsync(string fileName, string content) => js.InvokeVoidAsync("tocBuilder.download", fileName, content);

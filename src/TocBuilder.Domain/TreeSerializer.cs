@@ -61,23 +61,28 @@ public static class TreeSerializer
 
     private static ImportResult Build(FileDto file)
     {
-        if (file.Name is null || file.Entities is null || file.Links is null || file.Junctions is null || file.Reservations is null)
-            return Corrupt("This file is missing parts of the tree.");
-        if (file.Entities.Any(e => e.Statement is null) || file.Reservations.Any(r => r.Note is null || r.TargetKind is null) || file.Junctions.Any(j => j.Causes is null))
+        if (string.IsNullOrWhiteSpace(file.Name) || file.Entities is null || file.Links is null || file.Junctions is null || file.Reservations is null
+            || file.Entities.Any(e => e is null || e.Statement is null || !Enum.IsDefined(e.Tag))
+            || file.Links.Any(l => l is null)
+            || file.Junctions.Any(j => j is null || j.Causes is null)
+            || file.Reservations.Any(r => r is null || r.Note is null || r.TargetKind is null || !Enum.IsDefined(r.Category) || !Enum.IsDefined(r.State)))
             return Corrupt("This file is missing parts of the tree.");
 
         var entityIds = file.Entities.Select(e => e.Id).ToHashSet();
         var junctionIds = file.Junctions.Select(j => j.Id).ToHashSet();
+        var links = file.Links.Select(l => (l.Cause, l.Effect)).ToHashSet();
         var consistent =
             entityIds.Count == file.Entities.Length
             && junctionIds.Count == file.Junctions.Length
             && file.Reservations.Select(r => r.Id).Distinct().Count() == file.Reservations.Length
-            && file.Links.All(l => entityIds.Contains(l.Cause) && entityIds.Contains(l.Effect))
-            && file.Junctions.All(j => entityIds.Contains(j.Effect) && j.Causes.All(entityIds.Contains))
+            && links.Count == file.Links.Length
+            && file.Links.All(l => l.Cause != l.Effect && entityIds.Contains(l.Cause) && entityIds.Contains(l.Effect))
+            && !HasCycle(entityIds, links)
+            && file.Junctions.All(j => j.Causes.Length >= 2 && j.Causes.Distinct().Count() == j.Causes.Length && j.Causes.All(c => links.Contains((c, j.Effect))))
             && file.Reservations.All(r => r.TargetKind switch
             {
                 "entity" => entityIds.Contains(r.A),
-                "link" => file.Links.Any(l => l.Cause == r.A && l.Effect == r.B),
+                "link" => links.Contains((r.A, r.B)),
                 "junction" => junctionIds.Contains(r.A),
                 _ => false,
             })
@@ -93,6 +98,20 @@ public static class TreeSerializer
             file.Reservations.Select(FromDto),
             file.NextId, file.NextJunctionId, file.NextReservationId);
         return new ImportResult(ImportOutcome.Imported, file.Name, tree);
+    }
+
+    private static bool HasCycle(HashSet<int> entityIds, HashSet<(int Cause, int Effect)> links)
+    {
+        var incoming = entityIds.ToDictionary(id => id, id => links.Count(l => l.Effect == id));
+        var ready = new Stack<int>(incoming.Where(i => i.Value == 0).Select(i => i.Key));
+        var visited = 0;
+        while (ready.TryPop(out var id))
+        {
+            visited++;
+            foreach (var link in links.Where(l => l.Cause == id))
+                if (--incoming[link.Effect] == 0) ready.Push(link.Effect);
+        }
+        return visited < entityIds.Count;
     }
 
     private static ReservationDto ToDto(Reservation r)
