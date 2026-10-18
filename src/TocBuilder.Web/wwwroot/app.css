@@ -39,3 +39,11 @@ h1:focus {
 .editor .summary h3 { font-size: 0.9rem; margin: 0.75rem 0 0.25rem; }
 .editor .summary ul { margin: 0; padding-left: 1.2rem; }
 .editor .summary button.link { background: none; border: none; padding: 0; color: var(--selection); text-align: left; cursor: pointer; text-decoration: underline; }
+.editor .summary .note { color: #555; }
+.editor .reservations { margin-top: 1rem; border-top: 1px solid #ccc; padding-top: 0.5rem; }
+.editor .reservations h2 { font-size: 1.1rem; margin: 0 0 0.25rem; }
+.editor .reservations .target { margin: 0 0 0.5rem; color: #555; }
+.editor .reservations ul { list-style: none; margin: 0; padding: 0; }
+.editor .reservations li { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; margin-bottom: 0.4rem; }
+.editor .reservations .category { flex: 1 0 100%; font-weight: 600; }
+.editor .reservations input { flex: 1; min-width: 6rem; }

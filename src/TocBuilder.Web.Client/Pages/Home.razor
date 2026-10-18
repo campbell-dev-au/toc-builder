@@ -55,7 +55,11 @@
                 </defs>
                 @foreach (var link in tree.Links)
                 {
-                    <path d="@placement.LinkPath(link)" fill="none" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)" />
+                    var linkSelected = selectedLink == link;
+                    <g @onclick="() => SelectLink(link)" @onclick:stopPropagation style="cursor:pointer" aria-label="Causal link">
+                        <path d="@placement.LinkPath(link)" fill="none" stroke="transparent" stroke-width="14" />
+                        <path d="@placement.LinkPath(link)" fill="none" stroke="@(linkSelected ? SelectionColour : "#555")" stroke-width="@(linkSelected ? 3 : 1.5)" marker-end="url(#arrow)" />
+                    </g>
                 }
                 @foreach (var junction in tree.Junctions)
                 {
@@ -89,6 +93,50 @@
         @SummarySection("Core problems that explain no UDE", summary.CoreProblemsExplainingNoUde)
         @SummarySection("Unconnected entities", summary.UnconnectedEntities)
         @SummarySection("Root causes", summary.RootCauses)
+        <section>
+            <h3>Open reservations (@summary.OpenReservations.Count)</h3>
+            @if (summary.OpenReservations.Count > 0)
+            {
+                <ul>
+                    @foreach (var reservation in summary.OpenReservations)
+                    {
+                        <li>
+                            <button type="button" class="link" @onclick="() => SelectTarget(reservation.Target)">@CategoryLabel(reservation.Category): @Describe(reservation.Target)</button>
+                            @if (reservation.Note != "") { <span class="note"> – @reservation.Note</span> }
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+        @if (CurrentTarget is { } target)
+        {
+            <section class="reservations" aria-label="Reservations">
+                <h2>Reservations</h2>
+                <p class="target">@Describe(target)</p>
+                <ul>
+                    @foreach (var category in Enum.GetValues<ClrCategory>())
+                    {
+                        var existing = tree.Reservations.FirstOrDefault(r => r.Target == target && r.Category == category);
+                        <li>
+                            <span class="category">@CategoryLabel(category)</span>
+                            @if (existing is null)
+                            {
+                                <button type="button" @onclick="() => Raise(target, category)">Raise</button>
+                            }
+                            else
+                            {
+                                <select @key="(editRevision, existing.Id, 0)" value="@existing.State" @onchange="e => ChangeReservationState(existing.Id, e)" aria-label="@(CategoryLabel(category) + " state")">
+                                    <option value="@ReservationState.Open">Open</option>
+                                    <option value="@ReservationState.Resolved">Resolved</option>
+                                    <option value="@ReservationState.Dismissed">Dismissed</option>
+                                </select>
+                                <input @key="(editRevision, existing.Id, 1)" value="@existing.Note" @onchange="e => ChangeReservationNote(existing.Id, e)" placeholder="Note" aria-label="@(CategoryLabel(category) + " note")" />
+                            }
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
     </aside>
     </div>
 </div>
@@ -102,6 +150,7 @@
     private JunctionMode junctionMode;
     private readonly HashSet<EntityId> groupMembers = [];
     private JunctionId? selectedJunction;
+    private CausalLink? selectedLink;
     private string statement = "";
     private string message = "";
     private bool messageIsError;
@@ -131,6 +180,38 @@
     </section>;
 
     private Entity? SelectedEntity => selected is { } id ? tree.Entities.First(e => e.Id == id) : null;
+
+    private ReservationTarget? CurrentTarget =>
+        selectedJunction is { } junction ? new OnJunction(junction)
+        : selectedLink is { } link ? new OnLink(link)
+        : selected is { } entity ? new OnEntity(entity)
+        : null;
+
+    private string StatementOf(EntityId id) => tree.Entities.First(e => e.Id == id).Statement;
+
+    private string Describe(ReservationTarget target) => target switch
+    {
+        OnEntity entity => StatementOf(entity.Entity),
+        OnLink link => $"{StatementOf(link.Link.Cause)} → {StatementOf(link.Link.Effect)}",
+        OnJunction junction => DescribeJunction(tree.Junctions.First(j => j.Id == junction.Junction)),
+        _ => throw new InvalidOperationException($"Unhandled reservation target {target.GetType().Name}.")
+    };
+
+    private string DescribeJunction(AndJunction junction) =>
+        $"AND of {string.Join(" + ", junction.Causes.Select(StatementOf))} → {StatementOf(junction.Effect)}";
+
+    private static string CategoryLabel(ClrCategory category) => category switch
+    {
+        ClrCategory.Clarity => "Clarity",
+        ClrCategory.EntityExistence => "Entity existence",
+        ClrCategory.CausalityExistence => "Causality existence",
+        ClrCategory.CauseInsufficiency => "Cause insufficiency",
+        ClrCategory.AdditionalCause => "Additional cause",
+        ClrCategory.CauseEffectReversal => "Cause-effect reversal",
+        ClrCategory.PredictedEffectExistence => "Predicted effect existence",
+        ClrCategory.Tautology => "Tautology",
+        _ => throw new InvalidOperationException($"Unhandled CLR category {category}.")
+    };
 
     private static string TruncateForDisplay(string text) =>
         text.Length > MaxDisplayedStatement ? text[..(MaxDisplayedStatement - 1)] + "…" : text;
@@ -199,6 +280,51 @@
         Refresh();
     }
 
+    private void Raise(ReservationTarget target, ClrCategory category)
+    {
+        Begin();
+        tree.RaiseReservation(target, category);
+        Refresh();
+    }
+
+    private void ChangeReservationState(ReservationId id, ChangeEventArgs e)
+    {
+        if (!Enum.TryParse<ReservationState>(e.Value?.ToString(), out var state)) return;
+        Begin();
+        tree.SetReservationState(id, state);
+        Refresh();
+    }
+
+    private void ChangeReservationNote(ReservationId id, ChangeEventArgs e)
+    {
+        Begin();
+        tree.SetReservationNote(id, e.Value?.ToString() ?? "");
+        Refresh();
+    }
+
+    private void SelectLink(CausalLink link)
+    {
+        Begin();
+        ClearModes();
+        ClearSelection();
+        selectedLink = link;
+        focusCanvas = true;
+    }
+
+    private void SelectTarget(ReservationTarget target)
+    {
+        Begin();
+        ClearModes();
+        ClearSelection();
+        switch (target)
+        {
+            case OnEntity entity: selected = entity.Entity; break;
+            case OnLink link: selectedLink = link.Link; break;
+            case OnJunction junction: selectedJunction = junction.Junction; break;
+        }
+        focusCanvas = true;
+    }
+
     private void Undo() => Travel(tree.Undo());
     private void Redo() => Travel(tree.Redo());
 
@@ -209,6 +335,7 @@
         if (selected is { } id && tree.Entities.All(e => e.Id != id)) selected = null;   // the selected entity may not exist in the restored tree
         ClearModes();
         if (selectedJunction is { } junction && tree.Junctions.All(j => j.Id != junction)) selectedJunction = null;
+        if (selectedLink is { } link && !tree.Links.Contains(link)) selectedLink = null;
         editRevision++;   // the kept statement may differ after the restore, so rebuild the edit box
         Refresh();
         focusCanvas = true;
@@ -234,15 +361,15 @@
         }
         if (selectedJunction is { } junction && junctionMode != JunctionMode.None) { ChangeJunction(junction, id); return; }
         ClearModes();
+        ClearSelection();
         selected = id;
-        selectedJunction = null;
     }
 
     private void SelectJunction(JunctionId id)
     {
         Begin();
         ClearModes();
-        selected = null;
+        ClearSelection();
         selectedJunction = id;
         focusCanvas = true;
     }
@@ -364,7 +491,7 @@
             case "Tab": AddCause(); break;
             case "Delete": DeleteSelected(); break;
             case "Escape" when linking || junctionMode != JunctionMode.None: ClearModes(); Report(""); break;
-            case "Escape": selected = null; selectedJunction = null; break;
+            case "Escape": ClearSelection(); break;
         }
     }
 
@@ -385,14 +512,17 @@
 
     private void SelectNew(Entity entity)
     {
+        ClearSelection();
         selected = entity.Id;
-        selectedJunction = null;
         ClearModes();
         Refresh();
         focusCanvas = true;   // so the keyboard can keep building straight away
     }
 
-    private void Deselect() { selected = null; selectedJunction = null; ClearModes(); }
+    private void Deselect() { ClearSelection(); ClearModes(); }
+
+    // An entity, a junction and a link are never selected together.
+    private void ClearSelection() { selected = null; selectedJunction = null; selectedLink = null; }
     private void Refresh()
     {
         placement = TreeLayout.Compute(tree);

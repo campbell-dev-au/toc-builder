@@ -59,9 +59,9 @@ A derived view of a tree's state: UDEs with no path to a Core problem, Core prob
 _Avoid_: Validation panel, errors
 
 **Categories of Legitimate Reservation (CLR)**:
-The standard set of challenges (clarity, entity existence, causality existence, cause insufficiency and so on) used to test whether a Causal link holds.
+The standard set of challenges (clarity, entity existence, causality existence, cause insufficiency and so on) used to test whether a Causal link or Entity holds.
 _Avoid_: Validation rules, lint
 
 **Reservation**:
-A recorded challenge against a specific Causal link or Entity under one CLR category.
+A recorded challenge against a specific Causal link, AND-junction (as a whole) or Entity under one CLR category. It is open, resolved or dismissed, carries one note, and never blocks an edit. There is at most one per target and category.
 _Avoid_: Comment, warning
