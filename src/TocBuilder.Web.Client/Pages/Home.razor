@@ -1,6 +1,7 @@
 @page "/"
 @using TocBuilder.Domain
 @inject TreeLibrary Library
+@inject IJSRuntime Js
 
 <PageTitle>TOC Builder</PageTitle>
 
@@ -59,27 +60,35 @@
                 <option value="@EntityTag.CoreProblem">Core problem</option>
             </select>
         }
+        <span class="zoom" role="group" aria-label="Zoom">
+            <button type="button" @onclick="() => ZoomBy(1 / ZoomStep)" aria-label="Zoom out">−</button>
+            <span class="level" aria-live="off">@((int)Math.Round(viewport.Scale * 100))%</span>
+            <button type="button" @onclick="() => ZoomBy(ZoomStep)" aria-label="Zoom in">+</button>
+            <button type="button" @onclick="Fit">Fit</button>
+        </span>
         <span class="message @(messageIsError ? "error" : "")" role="status">@message</span>
     </div>
 
     <div class="workspace">
-    <div class="canvas" tabindex="0" @ref="canvasRef" @onkeydown="OnKeyDown" @onkeydown:preventDefault="@(selected is not null)">
+    <div class="canvas" tabindex="0" @ref="canvasRef" @onkeydown="OnKeyDown" @onkeydown:preventDefault="@(selected is not null)"
+         @onwheel="OnWheel" @onwheel:preventDefault @onpointermove="OnPointerMove" @onpointerup="EndDrag" @onpointerleave="CancelDrag">
         @if (tree.Entities.Count == 0)
         {
             <p class="empty">Add a first entity to begin.</p>
         }
         else
         {
-            <svg width="@placement.Width" height="@placement.Height" xmlns="http://www.w3.org/2000/svg" @onclick="Deselect">
+            <svg xmlns="http://www.w3.org/2000/svg" @onclick="Deselect" @onpointerdown="StartPan">
                 <defs>
                     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                         <path d="M0,0 L10,5 L0,10 z" fill="#555" />
                     </marker>
                 </defs>
+                <g transform="translate(@Num(viewport.PanX) @Num(viewport.PanY)) scale(@Num(viewport.Scale))">
                 @foreach (var link in tree.Links)
                 {
                     var linkSelected = selectedLink == link;
-                    <g @onclick="() => SelectLink(link)" @onclick:stopPropagation style="cursor:pointer" aria-label="Causal link">
+                    <g @onclick="() => { if (!ConsumeSuppressedClick()) SelectLink(link); }" @onclick:stopPropagation style="cursor:pointer" aria-label="Causal link">
                         <path d="@placement.LinkPath(link)" fill="none" stroke="transparent" stroke-width="14" />
                         <path d="@placement.LinkPath(link)" fill="none" stroke="@(linkSelected ? SelectionColour : "#555")" stroke-width="@(linkSelected ? 3 : 1.5)" marker-end="url(#arrow)" />
                     </g>
@@ -89,7 +98,7 @@
                     var (arc, labelX, labelY) = placement.JunctionArc(junction);
                     var junctionSelected = selectedJunction == junction.Id;
                     var colour = junctionSelected ? SelectionColour : JunctionColour;
-                    <g @onclick="() => SelectJunction(junction.Id)" @onclick:stopPropagation style="cursor:pointer" aria-label="AND-junction">
+                    <g @onclick="() => { if (!ConsumeSuppressedClick()) SelectJunction(junction.Id); }" @onclick:stopPropagation style="cursor:pointer" aria-label="AND-junction">
                         <path d="@arc" fill="none" stroke="transparent" stroke-width="14" />
                         <path d="@arc" fill="none" stroke="@colour" stroke-width="4" stroke-linecap="round" />
                         <text x="@labelX" y="@labelY" text-anchor="middle" font-size="10" font-weight="bold" font-family="sans-serif" fill="@colour">AND</text>
@@ -99,13 +108,15 @@
                 {
                     var (x, y) = placement.Positions[entity.Id];
                     var isSelected = selected == entity.Id;
-                    <g @onclick="() => Select(entity.Id)" @onclick:stopPropagation style="cursor:pointer">
+                    <g @onclick="() => { if (!ConsumeSuppressedClick()) Select(entity.Id); }" @onclick:stopPropagation
+                       @onpointerdown="e => StartEntityDrag(entity.Id, e)" @onpointerdown:stopPropagation style="cursor:pointer">
                         <rect x="@x" y="@y" width="@TreeLayout.EntityWidth" height="@TreeLayout.EntityHeight" rx="6"
                               fill="#f4f6fa" stroke="@(isSelected ? SelectionColour : groupMembers.Contains(entity.Id) ? JunctionColour : "#888")" stroke-width="@(isSelected || groupMembers.Contains(entity.Id) ? 3 : 1.2)" />
                         <text x="@(x + 6)" y="@(y - 4)" font-size="11" font-weight="bold" font-family="sans-serif" fill="@(entity.Tag == EntityTag.Ude ? "#b71c1c" : "#1b5e20")">@TagLabel(entity.Tag)</text>
                         <text x="@(x + TreeLayout.EntityWidth / 2)" y="@(y + TreeLayout.EntityHeight / 2 + 4)" text-anchor="middle" font-size="12" font-family="sans-serif">@TruncateForDisplay(entity.Statement)</text>
                     </g>
                 }
+                </g>
             </svg>
         }
     </div>
@@ -166,7 +177,16 @@
 
 @code {
     private Tree tree = new();
-    private TreeLayout.Result placement = TreeLayout.Compute(new Tree());
+    private TreeLayout.Result baseLayout = TreeLayout.Compute(new Tree());   // automatic layout, before any dragging
+    private TreeLayout.Result placement = TreeLayout.Compute(new Tree());   // what is drawn: the layout plus the nudges
+    private readonly Dictionary<EntityId, (double X, double Y)> nudges = [];   // how far each dragged entity sits from its laid-out position; not saved
+    private Viewport viewport = Viewport.Identity;
+    private enum Drag { None, Pan, Entity }
+    private Drag drag;
+    private EntityId draggedEntity;
+    private double lastX, lastY;   // where the pointer was when the drag last moved something
+    private bool dragMoved;
+    private bool suppressClick;   // the click that ends a drag must not select or deselect anything
     private EntityId? selected;
     private bool linking;
     private enum JunctionMode { None, Grouping, Adding, Removing }
@@ -184,6 +204,7 @@
     private const string JunctionColour = "#e65100";
     private const string SelectionColour = "#1565c0";   // keep in step with --selection in app.css
     private const int MaxDisplayedStatement = 22;
+    private const double ZoomStep = 1.25, WheelSensitivity = 0.0015, DragThreshold = 3, LabelHeight = 16;
 
     private TreeSummary summary = new Tree().Summarise();
 
@@ -225,6 +246,9 @@
         currentId = id;
         treeName = name;
         confirmingDelete = false;
+        nudges.Clear();
+        viewport = Viewport.Identity;
+        CancelDrag();
         ClearSelection();
         ClearModes();
         statement = "";
@@ -690,14 +714,125 @@
         focusCanvas = true;   // so the keyboard can keep building straight away
     }
 
-    private void Deselect() { ClearSelection(); ClearModes(); }
+    private void Deselect()
+    {
+        if (ConsumeSuppressedClick()) return;
+        ClearSelection();
+        ClearModes();
+    }
+
+    private bool ConsumeSuppressedClick()
+    {
+        var suppressed = suppressClick;
+        suppressClick = false;
+        return suppressed;
+    }
+
+    // SVG attributes need invariant numbers whatever the browser's culture.
+    private static string Num(double value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private async Task<(double Left, double Top, double Width, double Height)> CanvasRect()
+    {
+        var rect = await Js.InvokeAsync<double[]>("tocBuilder.rect", canvasRef);
+        return (rect[0], rect[1], rect[2], rect[3]);
+    }
+
+    private async Task OnWheel(WheelEventArgs e)
+    {
+        var rect = await CanvasRect();
+        var lines = e.DeltaMode == 1 ? 16 : 1;   // Firefox can report lines rather than pixels
+        viewport = viewport.ZoomAt(Math.Exp(-e.DeltaY * lines * WheelSensitivity), e.ClientX - rect.Left, e.ClientY - rect.Top);
+    }
+
+    private async Task ZoomBy(double factor)
+    {
+        var rect = await CanvasRect();
+        viewport = viewport.ZoomAt(factor, rect.Width / 2, rect.Height / 2);
+    }
+
+    private async Task Fit()
+    {
+        if (tree.Entities.Count == 0) return;
+        var rect = await CanvasRect();
+        var xs = placement.Positions.Values.Select(p => p.X).ToList();
+        var ys = placement.Positions.Values.Select(p => p.Y).ToList();
+        var left = xs.Min() - TreeLayout.Margin;
+        var top = ys.Min() - LabelHeight - TreeLayout.Margin;
+        viewport = Viewport.Fit(left, top, xs.Max() + TreeLayout.EntityWidth + TreeLayout.Margin - left, ys.Max() + TreeLayout.EntityHeight + TreeLayout.Margin - top, rect.Width, rect.Height);
+    }
+
+    private void StartPan(PointerEventArgs e)
+    {
+        if (e.Button == 0) BeginDrag(Drag.Pan, e);
+    }
+
+    private void StartEntityDrag(EntityId id, PointerEventArgs e)
+    {
+        if (e.Button != 0) return;
+        draggedEntity = id;
+        BeginDrag(Drag.Entity, e);
+    }
+
+    private void BeginDrag(Drag kind, PointerEventArgs e)
+    {
+        drag = kind;
+        lastX = e.ClientX;
+        lastY = e.ClientY;
+        dragMoved = false;
+        suppressClick = false;
+    }
+
+    private void OnPointerMove(PointerEventArgs e)
+    {
+        if (drag == Drag.None) return;
+        if ((e.Buttons & 1) == 0) { EndDrag(); return; }   // the button was released where we could not see it
+        if (!dragMoved)
+        {
+            if (double.Hypot(e.ClientX - lastX, e.ClientY - lastY) < DragThreshold) return;
+            dragMoved = true;
+        }
+        double dx = e.ClientX - lastX, dy = e.ClientY - lastY;
+        lastX = e.ClientX;
+        lastY = e.ClientY;
+        if (drag == Drag.Pan)
+        {
+            viewport = viewport.PanBy(dx, dy);
+            return;
+        }
+        var (x, y) = nudges.GetValueOrDefault(draggedEntity);
+        nudges[draggedEntity] = (x + dx / viewport.Scale, y + dy / viewport.Scale);   // the pointer moves in screen pixels, the entity in world units
+        ApplyNudges();
+    }
+
+    // Leaving the canvas ends the drag with no click to follow, so there is nothing to suppress.
+    private void CancelDrag()
+    {
+        drag = Drag.None;
+        suppressClick = false;
+    }
+
+    private void EndDrag()
+    {
+        suppressClick = dragMoved;
+        drag = Drag.None;
+    }
+
+    private void ApplyNudges()
+    {
+        foreach (var id in nudges.Keys.Where(id => !baseLayout.Positions.ContainsKey(id)).ToList()) nudges.Remove(id);
+        placement = baseLayout with
+        {
+            Positions = baseLayout.Positions.ToDictionary(p => p.Key, p => nudges.TryGetValue(p.Key, out var n) ? (p.Value.X + n.X, p.Value.Y + n.Y) : p.Value)
+        };
+    }
 
     // An entity, a junction and a link are never selected together.
     private void ClearSelection() { selected = null; selectedJunction = null; selectedLink = null; }
     private void Refresh()
     {
         unsaved = true;
-        placement = TreeLayout.Compute(tree);
+        baseLayout = TreeLayout.Compute(tree);
+        ApplyNudges();
         summary = tree.Summarise();
     }
 }

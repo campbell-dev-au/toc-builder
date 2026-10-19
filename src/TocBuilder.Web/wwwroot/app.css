@@ -25,7 +25,10 @@ h1:focus {
 
 .editor { --selection: #1565c0; padding-top: 1rem; }
 .editor .add { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
-.editor .canvas { overflow: auto; border: 1px solid #ccc; min-height: 60vh; outline: none; }
+.editor .canvas { overflow: hidden; border: 1px solid #ccc; height: 70vh; outline: none; user-select: none; touch-action: none; }
+.editor .canvas svg { display: block; width: 100%; height: 100%; }
+.editor .zoom { display: inline-flex; gap: 0.25rem; align-items: center; }
+.editor .zoom .level { min-width: 3rem; text-align: center; }
 .editor .canvas:focus-visible { box-shadow: 0 0 0 2px var(--selection); }
 .editor .empty { color: #666; padding: 1rem; }
 .editor .toolbar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
