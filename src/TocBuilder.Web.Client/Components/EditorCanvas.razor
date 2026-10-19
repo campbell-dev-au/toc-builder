@@ -1,4 +1,5 @@
 @using TocBuilder.Domain
+@inject IJSRuntime Js
 
 <div class="canvas" tabindex="0" @ref="canvas" @onkeydown="OnKeyDown" @onkeydown:preventDefault="@HasSelection"
      @onwheel="OnWheel" @onwheel:preventDefault @onpointermove="OnPointerMove" @onpointerup="OnPointerUp" @onpointerleave="OnPointerLeave">
@@ -14,7 +15,7 @@
                     <path d="M0,0 L10,5 L0,10 z" fill="#555" />
                 </marker>
             </defs>
-            <g transform="translate(@Num(Math.Round(Viewport.PanX)) @Num(Math.Round(Viewport.PanY))) scale(@Num(Viewport.Scale))">
+            <g transform="translate(@Num(OnDevicePixel(Viewport.PanX)) @Num(OnDevicePixel(Viewport.PanY))) scale(@Num(Viewport.Scale))">
             @foreach (var link in Tree.Links)
             {
                 var linkSelected = SelectedLink == link;
@@ -89,6 +90,19 @@
     private const string SelectionColour = "#1565c0";   // keep in step with --selection in app.css
 
     private ElementReference canvas;
+    private double pixelRatio = 1;   // device pixels per CSS pixel, so a pan always moves the drawing by whole device pixels
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        var ratio = await Js.InvokeAsync<double>("tocBuilder.devicePixelRatio");
+        if (ratio <= 0 || ratio == pixelRatio) return;
+        pixelRatio = ratio;
+        StateHasChanged();
+    }
+
+    // Text snaps to whole device pixels line by line while the boxes do not, so a pan by a fraction of one makes the lines wobble against the boxes.
+    private double OnDevicePixel(double cssPixels) => Math.Round(cssPixels * pixelRatio) / pixelRatio;
 
     [Parameter, EditorRequired] public Tree Tree { get; set; } = null!;
     [Parameter, EditorRequired] public TreeLayout.Result Placement { get; set; } = null!;
