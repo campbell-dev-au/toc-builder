@@ -21,18 +21,18 @@
     <AddEntityForm @bind-Statement="statement" OnSubmit="AddEntity" />
 
     <div class="workspace">
-    <EditorCanvas @ref="canvas" Tree="tree" Placement="placement" View="view" Viewport="viewport" Selected="selected" SelectedJunction="selectedJunction"
-                  SelectedLink="selectedLink" GroupMembers="groupMembers" Suggestions="suggestions" GhostAnchor="ghostAnchor"
+    <EditorCanvas @ref="canvas" Tree="tree" Placement="placement" View="view" Viewport="viewport" SelectedEntities="selection" SelectedJunction="selectedJunction"
+                  SelectedLink="selectedLink" Suggestions="suggestions" GhostAnchor="ghostAnchor"
                   SelectedGhost="selectedGhost" ConsumeSuppressedClick="ConsumeSuppressedClick"
                   OnKeyDown="OnKeyDown" OnWheel="OnWheel" OnPointerMove="OnPointerMove" OnPointerUp="EndDrag" OnPointerLeave="CancelDrag"
-                  OnStartPan="StartPan" OnStartEntityDrag="@(drag => StartEntityDrag(drag.Id, drag.Args))" OnDeselect="Deselect" OnSelectEntity="Select"
+                  OnStartPan="StartPan" OnStartEntityDrag="@(drag => StartEntityDrag(drag.Id, drag.Args))" OnDeselect="Deselect" OnSelectEntity="Select" OnToggleEntity="ToggleSelect"
                   OnSelectLink="SelectLink" OnSelectJunction="SelectJunction" OnSelectGhost="SelectGhost" />
 
-    <ContextPanel Tree="tree" Report="report" Target="CurrentTarget" SelectedEntity="SelectedEntity" HasJunction="@(selectedJunction is not null)"
-                  Linking="linking" JunctionMode="junctionMode" GroupMemberCount="groupMembers.Count" Suggesting="suggesting"
+    <ContextPanel Tree="tree" Report="report" Target="CurrentTarget" SelectedEntity="SelectedEntity" SelectedEntityCount="selection.Count" MakeAndUnavailable="MakeAndUnavailable" SelectedJunction="selectedJunction"
+                  Linking="linking" Suggesting="suggesting"
                   SelectedGhost="selectedGhost" @bind-GhostEdit="ghostEdit" EditRevision="editRevision"
-                  OnAddCause="AddCause" OnAddEffect="AddEffect" OnToggleLinking="ToggleLinking" OnStartGrouping="StartGrouping"
-                  OnApplyGrouping="ApplyGrouping" OnDelete="DeleteSelected" OnStartJunctionMode="StartJunctionMode" OnUngroup="Ungroup"
+                  OnAddCause="AddCause" OnAddEffect="AddEffect" OnToggleLinking="ToggleLinking" OnMakeAnd="MakeAnd"
+                   OnDelete="DeleteSelected" OnAddToJunction="AddToJunction" OnRemoveFromJunction="RemoveFromJunction" OnUngroup="Ungroup"
                   OnEditSelected="EditSelected" OnSummarySelected="SummarySelected" OnTagSelected="TagSelected"
                   OnSuggest="Suggest" OnAcceptGhost="AcceptGhost" OnDismissGhost="DismissGhost"
                   OnRaise="@(raised => Raise(raised.Target, raised.Category))"
@@ -61,10 +61,13 @@
     private bool suggesting;
     private bool scopePrompted;   // the user is asked for a Scope the first time they request Suggestions without one
     private ScopeBar scopeBar = null!;
-    private EntityId? selected;
+    private readonly HashSet<EntityId> selection = [];   // Shift- or Ctrl-click selects several Entities
+    private EntityId? selected   // the Entity selected on its own; null when none or several are
+    {
+        get => selection.Count == 1 ? selection.First() : null;
+        set { selection.Clear(); if (value is { } id) selection.Add(id); }
+    }
     private bool linking;
-    private JunctionMode junctionMode;
-    private readonly HashSet<EntityId> groupMembers = [];
     private JunctionId? selectedJunction;
     private CausalLink? selectedLink;
     private string statement = "";
@@ -289,7 +292,7 @@
 
     private void DeleteSelected()
     {
-        if (selected is null) { Ungroup(); return; }
+        if (selected is null) { if (selection.Count == 0) Ungroup(); return; }
         var id = selected.Value;
         Begin();
         tree.Delete(id);
@@ -492,7 +495,7 @@
     {
         Begin();
         if (!changed) return;
-        if (selected is { } id && tree.Entities.All(e => e.Id != id)) selected = null;   // the selected entity may not exist in the restored tree
+        selection.RemoveWhere(id => tree.Entities.All(e => e.Id != id));   // the selected entity may not exist in the restored tree
         ClearModes();
         if (selectedJunction is { } junction && tree.Junctions.All(j => j.Id != junction)) selectedJunction = null;
         if (selectedLink is { } link && !tree.Links.Contains(link)) selectedLink = null;
@@ -515,15 +518,20 @@
     private void Select(EntityId id)
     {
         if (linking && selected is not null) { LinkSelectedTo(id); return; }   // linking an entity to itself is reported as a cycle
-        if (junctionMode == JunctionMode.Grouping && selected is { } effect)
-        {
-            if (id != effect && !groupMembers.Remove(id)) groupMembers.Add(id);
-            return;
-        }
-        if (selectedJunction is { } junction && junctionMode != JunctionMode.None) { ChangeJunction(junction, id); return; }
         ClearModes();
         ClearSelection();
         selected = id;
+    }
+
+    private void ToggleSelect(EntityId id)
+    {
+        Begin();
+        ClearModes();
+        var entities = new HashSet<EntityId>(selection);
+        ClearSelection();
+        if (!entities.Remove(id)) entities.Add(id);
+        selection.UnionWith(entities);
+        focusCanvas = true;
     }
 
     private void SelectJunction(JunctionId id)
@@ -535,60 +543,40 @@
         focusCanvas = true;
     }
 
-    private void StartGrouping()
-    {
-        if (selected is null) return;
-        Begin();
-        var wasGrouping = junctionMode == JunctionMode.Grouping;
-        ClearModes();
-        if (wasGrouping) return;
-        junctionMode = JunctionMode.Grouping;
-        Report("Click two or more causes of the selected entity, then apply. Escape cancels.");
-        focusCanvas = true;
-    }
+    private string? MakeAndUnavailable => selection.Count < 2 ? null
+        : tree.CheckMakeAnd([.. selection]) is var outcome && outcome != JunctionOutcome.Done ? Explain(outcome) : null;
 
-    private void ApplyGrouping()
+    private void MakeAnd()
     {
-        if (selected is not { } effect) return;
+        if (selection.Count < 2) return;
         Begin();
-        var result = tree.Group(effect, [.. groupMembers]);
+        var result = tree.MakeAnd([.. selection]);
         if (result.Outcome != JunctionOutcome.Done) { Report(Explain(result.Outcome), isError: true); return; }
         ClearModes();
-        selected = null;
+        ClearSelection();
         selectedJunction = result.Junction!.Id;
-        Report("Grouped.");
+        Report("Made an AND-junction.");
         Refresh();
         focusCanvas = true;
     }
 
-    private void StartJunctionMode(JunctionMode mode)
+    private void AddToJunction(EntityId entity)
     {
+        if (selectedJunction is not { } junction) return;
         Begin();
-        var wasMode = junctionMode;
-        ClearModes();
-        if (wasMode == mode) return;
-        junctionMode = mode;
-        Report(mode == JunctionMode.Adding ? "Click the entity to add as a cause to this AND-junction." : "Click the cause to take out of this AND-junction.");
-        focusCanvas = true;
+        var outcome = tree.AddToJunction(junction, entity);
+        if (outcome != JunctionOutcome.Done) { Report(Explain(outcome), isError: true); return; }
+        Report("Added to the AND-junction.");
+        Refresh();
     }
 
-    private void ChangeJunction(JunctionId junction, EntityId entity)
+    private void RemoveFromJunction(EntityId entity)
     {
+        if (selectedJunction is not { } junction) return;
         Begin();
-        if (junctionMode == JunctionMode.Removing)
-        {
-            if (!tree.Junctions.First(j => j.Id == junction).Causes.Contains(entity)) { Report("That entity is not in this AND-junction.", isError: true); return; }
-            tree.RemoveFromJunction(junction, entity);
-            if (tree.Junctions.All(j => j.Id != junction)) selectedJunction = null;   // left with one cause, so it dissolved
-            Report("Removed from the AND-junction.");
-        }
-        else
-        {
-            var outcome = tree.AddToJunction(junction, entity);
-            if (outcome != JunctionOutcome.Done) { Report(Explain(outcome), isError: true); return; }
-            Report("Added to the AND-junction.");
-        }
-        ClearModes();
+        tree.RemoveFromJunction(junction, entity);
+        if (tree.Junctions.All(j => j.Id != junction)) selectedJunction = null;   // left with one cause, so it dissolved
+        Report("Removed from the AND-junction.");
         Refresh();
     }
 
@@ -606,7 +594,9 @@
     private static string Explain(JunctionOutcome outcome) => outcome switch
     {
         JunctionOutcome.TooFewCauses => "An AND-junction needs at least two causes.",
-        JunctionOutcome.NotACauseOfEffect => "Every grouped entity must already be a cause of the selected entity.",
+        JunctionOutcome.NotACauseOfEffect => "Every grouped entity must already be a cause of the junction's effect.",
+        JunctionOutcome.DifferentEffects => "These entities are not causes of the same effect, so they cannot be ANDed.",
+        JunctionOutcome.AmbiguousEffect => "These entities are causes of more than one shared effect, so it is unclear which to AND them under.",
         JunctionOutcome.AlreadyInJunction => "That cause is already in an AND-junction for this effect.",
         JunctionOutcome.WouldCreateCycle => "Rejected: that would create a cycle.",
         _ => throw new InvalidOperationException($"Unhandled junction outcome {outcome}.")
@@ -615,8 +605,6 @@
     private void ClearModes()
     {
         linking = false;
-        junctionMode = JunctionMode.None;
-        groupMembers.Clear();
     }
 
     private void LinkSelectedTo(EntityId effect)
@@ -643,6 +631,7 @@
                 case "z" when e.ShiftKey: Redo(); break;
                 case "z": Undo(); break;
                 case "y": Redo(); break;
+                case "enter": MakeAnd(); break;
                 default: return;
             }
             return;
@@ -651,7 +640,7 @@
         {
             case "Tab": AddCause(); break;
             case "Delete": DeleteSelected(); break;
-            case "Escape" when linking || junctionMode != JunctionMode.None: ClearModes(); Report(""); break;
+            case "Escape" when linking: ClearModes(); Report(""); break;
             case "Escape": ClearSelection(); break;
         }
     }
@@ -811,7 +800,7 @@
     };
 
     // An entity, a junction and a link are never selected together.
-    private void ClearSelection() { selected = null; selectedJunction = null; selectedLink = null; selectedGhost = null; }
+    private void ClearSelection() { selection.Clear(); selectedJunction = null; selectedLink = null; selectedGhost = null; }
     private void Refresh()
     {
         unsaved = true;
