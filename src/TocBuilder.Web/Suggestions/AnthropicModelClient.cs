@@ -23,7 +23,7 @@ public sealed class AnthropicModelClient(HttpClient http, IConfiguration configu
         var body = new JsonObject
         {
             ["model"] = configuration["Anthropic:Model"] ?? "claude-sonnet-5-5",
-            ["max_tokens"] = 1024,
+            ["max_tokens"] = 2048,
             ["system"] = System,
             ["messages"] = new JsonArray(new JsonObject { ["role"] = "user", ["content"] = Prompt(request) }),
         };
