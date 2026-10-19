@@ -53,3 +53,4 @@ h1:focus {
 
 .editor .library { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
 .editor .library .import input { margin-left: 0.25rem; }
+.editor .scope { margin-bottom: 0.75rem; }
