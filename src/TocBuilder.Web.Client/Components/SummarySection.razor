@@ -1,0 +1,20 @@
+@using TocBuilder.Domain
+
+<section>
+    <h3>@Title (@Entities.Count)</h3>
+    @if (Entities.Count > 0)
+    {
+        <ul>
+            @foreach (var entity in Entities)
+            {
+                <li><button type="button" class="link" @onclick="() => OnSelect.InvokeAsync(entity.Id)">@entity.Statement</button></li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter, EditorRequired] public IReadOnlyList<Entity> Entities { get; set; } = [];
+    [Parameter] public EventCallback<EntityId> OnSelect { get; set; }
+}

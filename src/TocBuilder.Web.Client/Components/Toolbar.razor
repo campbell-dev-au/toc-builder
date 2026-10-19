@@ -1,0 +1,91 @@
+@using TocBuilder.Domain
+
+<div class="toolbar">
+    <button type="button" @onclick="OnUndo" disabled="@(!CanUndo)">Undo (Ctrl+Z)</button>
+    <button type="button" @onclick="OnRedo" disabled="@(!CanRedo)">Redo (Ctrl+Shift+Z)</button>
+    <button type="button" @onclick="OnAddCause" disabled="@(!HasSelection)">Add cause (Tab)</button>
+    <button type="button" @onclick="OnAddEffect" disabled="@(!HasSelection)">Add effect</button>
+    <button type="button" @onclick="OnToggleLinking" disabled="@(!HasSelection)" aria-pressed="@(Linking ? "true" : "false")">Link: selected is a cause of…</button>
+    <button type="button" @onclick="OnStartGrouping" disabled="@(!HasSelection)" aria-pressed="@(JunctionMode == JunctionMode.Grouping ? "true" : "false")">AND-group causes…</button>
+    @if (JunctionMode == JunctionMode.Grouping)
+    {
+        <button type="button" @onclick="OnApplyGrouping" disabled="@(GroupMemberCount < 2)">Apply AND-group (@GroupMemberCount)</button>
+    }
+    <button type="button" @onclick="OnDelete" disabled="@(!HasSelection && !HasJunction)">Delete (Del)</button>
+    @if (HasJunction)
+    {
+        <button type="button" @onclick="() => OnStartJunctionMode.InvokeAsync(JunctionMode.Adding)" aria-pressed="@(JunctionMode == JunctionMode.Adding ? "true" : "false")">Add cause to AND…</button>
+        <button type="button" @onclick="() => OnStartJunctionMode.InvokeAsync(JunctionMode.Removing)" aria-pressed="@(JunctionMode == JunctionMode.Removing ? "true" : "false")">Remove cause from AND…</button>
+        <button type="button" @onclick="OnUngroup">Ungroup</button>
+    }
+    @if (SelectedEntity is { } current)
+    {
+        <input class="edit" @key="(EditRevision, 0)" value="@current.Statement" @onchange="OnEditSelected" size="40" aria-label="Selected entity statement" />
+        <select @key="(EditRevision, 1)" value="@current.Tag" @onchange="OnTagSelected" aria-label="Selected entity tag">
+            <option value="@EntityTag.None">No tag</option>
+            <option value="@EntityTag.Ude">UDE</option>
+            <option value="@EntityTag.CoreProblem">Core problem</option>
+        </select>
+    }
+    <button type="button" @onclick="() => OnSuggest.InvokeAsync(SuggestionKind.Cause)" disabled="@(!HasSelection || Suggesting)">Suggest causes</button>
+    <button type="button" @onclick="() => OnSuggest.InvokeAsync(SuggestionKind.Effect)" disabled="@(!HasSelection || Suggesting)">Suggest effects</button>
+    @if (HasJunction)
+    {
+        <button type="button" @onclick="() => OnSuggest.InvokeAsync(SuggestionKind.CoCause)" disabled="@Suggesting">Suggest co-cause</button>
+    }
+    @if (SelectedGhost is { } chosen)
+    {
+        <input class="edit" value="@GhostEdit" @oninput="e => GhostEditChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty)" disabled="@(chosen.Existing is not null)" size="40" aria-label="Suggestion statement" />
+        <button type="button" @onclick="OnAcceptGhost">Accept suggestion</button>
+        <button type="button" @onclick="OnDismissGhost">Dismiss suggestion</button>
+    }
+    <span class="zoom" role="group" aria-label="Zoom">
+        <button type="button" @onclick="() => OnZoom.InvokeAsync(1 / ZoomStep)" aria-label="Zoom out">−</button>
+        <span class="level" aria-live="off">@ZoomPercent%</span>
+        <button type="button" @onclick="() => OnZoom.InvokeAsync(ZoomStep)" aria-label="Zoom in">+</button>
+        <button type="button" @onclick="OnFit">Fit</button>
+    </span>
+    <button type="button" @onclick="OnRerunLayout" disabled="@(!CanRerunLayout)">Re-run layout</button>
+    <span class="message @(MessageIsError ? "error" : "")" role="status">@Message</span>
+</div>
+
+@code {
+    private const double ZoomStep = 1.25;
+
+    [Parameter] public bool CanUndo { get; set; }
+    [Parameter] public bool CanRedo { get; set; }
+    [Parameter] public bool HasSelection { get; set; }   // an Entity is selected
+    [Parameter] public bool HasJunction { get; set; }   // an AND-junction is selected
+    [Parameter] public Entity? SelectedEntity { get; set; }
+    [Parameter] public bool Linking { get; set; }
+    [Parameter] public JunctionMode JunctionMode { get; set; }
+    [Parameter] public int GroupMemberCount { get; set; }
+    [Parameter] public bool Suggesting { get; set; }
+    [Parameter] public Suggestion? SelectedGhost { get; set; }
+    [Parameter] public string GhostEdit { get; set; } = "";
+    [Parameter] public EventCallback<string> GhostEditChanged { get; set; }
+    [Parameter] public int ZoomPercent { get; set; }
+    [Parameter] public bool CanRerunLayout { get; set; }
+    [Parameter] public string Message { get; set; } = "";
+    [Parameter] public bool MessageIsError { get; set; }
+    [Parameter] public int EditRevision { get; set; }
+
+    [Parameter] public EventCallback OnUndo { get; set; }
+    [Parameter] public EventCallback OnRedo { get; set; }
+    [Parameter] public EventCallback OnAddCause { get; set; }
+    [Parameter] public EventCallback OnAddEffect { get; set; }
+    [Parameter] public EventCallback OnToggleLinking { get; set; }
+    [Parameter] public EventCallback OnStartGrouping { get; set; }
+    [Parameter] public EventCallback OnApplyGrouping { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public EventCallback<JunctionMode> OnStartJunctionMode { get; set; }
+    [Parameter] public EventCallback OnUngroup { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnEditSelected { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnTagSelected { get; set; }
+    [Parameter] public EventCallback<SuggestionKind> OnSuggest { get; set; }
+    [Parameter] public EventCallback OnAcceptGhost { get; set; }
+    [Parameter] public EventCallback OnDismissGhost { get; set; }
+    [Parameter] public EventCallback<double> OnZoom { get; set; }   // the factor to zoom by
+    [Parameter] public EventCallback OnFit { get; set; }
+    [Parameter] public EventCallback OnRerunLayout { get; set; }
+}

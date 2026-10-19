@@ -1,0 +1,40 @@
+@using TocBuilder.Domain
+
+@if (Target is { } target)
+{
+    <section class="reservations" aria-label="Reservations">
+        <h2>Reservations</h2>
+        <p class="target">@ReservationText.Describe(Tree, target)</p>
+        <ul>
+            @foreach (var category in Enum.GetValues<ClrCategory>())
+            {
+                var existing = Tree.Reservations.FirstOrDefault(r => r.Target == target && r.Category == category);
+                <li>
+                    <span class="category">@ReservationText.CategoryLabel(category)</span>
+                    @if (existing is null)
+                    {
+                        <button type="button" @onclick="() => OnRaise.InvokeAsync((target, category))">Raise</button>
+                    }
+                    else
+                    {
+                        <select @key="(EditRevision, existing.Id, 0)" value="@existing.State" @onchange="e => OnChangeState.InvokeAsync((existing.Id, e))" aria-label="@(ReservationText.CategoryLabel(category) + " state")">
+                            <option value="@ReservationState.Open">Open</option>
+                            <option value="@ReservationState.Resolved">Resolved</option>
+                            <option value="@ReservationState.Dismissed">Dismissed</option>
+                        </select>
+                        <input @key="(EditRevision, existing.Id, 1)" value="@existing.Note" @onchange="e => OnChangeNote.InvokeAsync((existing.Id, e))" placeholder="Note" aria-label="@(ReservationText.CategoryLabel(category) + " note")" />
+                    }
+                </li>
+            }
+        </ul>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public Tree Tree { get; set; } = null!;
+    [Parameter] public ReservationTarget? Target { get; set; }
+    [Parameter] public int EditRevision { get; set; }
+    [Parameter] public EventCallback<(ReservationTarget Target, ClrCategory Category)> OnRaise { get; set; }
+    [Parameter] public EventCallback<(ReservationId Id, ChangeEventArgs Args)> OnChangeState { get; set; }
+    [Parameter] public EventCallback<(ReservationId Id, ChangeEventArgs Args)> OnChangeNote { get; set; }
+}

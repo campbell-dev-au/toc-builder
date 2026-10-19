@@ -1,0 +1,10 @@
+<form class="add" @onsubmit="OnSubmit">
+    <input value="@Statement" @oninput="e => StatementChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty)" placeholder="Describe an entity, e.g. an undesirable effect" size="52" aria-label="Entity statement" />
+    <button type="submit">Add entity</button>
+</form>
+
+@code {
+    [Parameter] public string Statement { get; set; } = "";
+    [Parameter] public EventCallback<string> StatementChanged { get; set; }
+    [Parameter] public EventCallback OnSubmit { get; set; }
+}

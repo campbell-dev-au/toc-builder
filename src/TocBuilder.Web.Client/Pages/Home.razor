@@ -1,5 +1,6 @@
 @page "/"
 @using TocBuilder.Domain
+@using TocBuilder.Web.Client.Components
 @inject TreeLibrary Library
 @inject IJSRuntime Js
 @inject ISuggestionProvider Provider
@@ -7,215 +8,40 @@
 <PageTitle>TOC Builder</PageTitle>
 
 <div class="editor">
-    <div class="library" role="group" aria-label="Trees">
-        <select value="@currentId" @onchange="OpenTree" aria-label="Open tree">
-            @foreach (var saved in trees)
-            {
-                <option value="@saved.Id">@saved.Name</option>
-            }
-        </select>
-        <input @key="(editRevision, 2)" value="@treeName" @onchange="RenameTree" aria-label="Tree name" />
-        <button type="button" @onclick="NewTree">New tree</button>
-        @if (confirmingDelete)
-        {
-            <button type="button" @onclick="DeleteTree">Confirm delete</button>
-            <button type="button" @onclick="() => confirmingDelete = false">Cancel</button>
-        }
-        else
-        {
-            <button type="button" @onclick="() => confirmingDelete = true">Delete tree</button>
-        }
-        <button type="button" @onclick="ExportTree">Export JSON</button>
-        <button type="button" @onclick="() => ExportImage(png: false)" disabled="@(tree.Entities.Count == 0)">Export SVG</button>
-        <button type="button" @onclick="() => ExportImage(png: true)" disabled="@(tree.Entities.Count == 0)">Export PNG</button>
-        <label class="import">Import JSON <InputFile OnChange="ImportTree" accept=".json,application/json" /></label>
-    </div>
+    <LibraryBar Trees="trees" CurrentId="@currentId" TreeName="@treeName" EditRevision="editRevision"
+                @bind-ConfirmingDelete="confirmingDelete" HasEntities="@(tree.Entities.Count > 0)"
+                OnOpen="OpenTree" OnRename="RenameTree" OnNew="NewTree" OnDelete="DeleteTree" OnExportJson="ExportTree"
+                OnExportImage="ExportImage" OnImport="ImportTree" />
 
-    <div class="scope">
-        <label>Scope <input @ref="scopeInput" @key="(editRevision, 3)" value="@tree.Scope" @onchange="EditScope" size="80" placeholder="The problem domain, sent with each request for suggestions" aria-label="Scope" /></label>
-    </div>
+    <ScopeBar @ref="scopeBar" Scope="@tree.Scope" EditRevision="editRevision" OnEdit="EditScope" />
 
-    <form class="add" @onsubmit="AddEntity">
-        <input @bind="statement" @bind:event="oninput" placeholder="Describe an entity, e.g. an undesirable effect" size="52" aria-label="Entity statement" />
-        <button type="submit">Add entity</button>
-    </form>
+    <AddEntityForm @bind-Statement="statement" OnSubmit="AddEntity" />
 
-    <div class="toolbar">
-        <button type="button" @onclick="Undo" disabled="@(!tree.CanUndo)">Undo (Ctrl+Z)</button>
-        <button type="button" @onclick="Redo" disabled="@(!tree.CanRedo)">Redo (Ctrl+Shift+Z)</button>
-        <button type="button" @onclick="AddCause" disabled="@(selected is null)">Add cause (Tab)</button>
-        <button type="button" @onclick="AddEffect" disabled="@(selected is null)">Add effect</button>
-        <button type="button" @onclick="ToggleLinking" disabled="@(selected is null)" aria-pressed="@(linking ? "true" : "false")">Link: selected is a cause of…</button>
-        <button type="button" @onclick="StartGrouping" disabled="@(selected is null)" aria-pressed="@(junctionMode == JunctionMode.Grouping ? "true" : "false")">AND-group causes…</button>
-        @if (junctionMode == JunctionMode.Grouping)
-        {
-            <button type="button" @onclick="ApplyGrouping" disabled="@(groupMembers.Count < 2)">Apply AND-group (@groupMembers.Count)</button>
-        }
-        <button type="button" @onclick="DeleteSelected" disabled="@(selected is null && selectedJunction is null)">Delete (Del)</button>
-        @if (selectedJunction is not null)
-        {
-            <button type="button" @onclick="() => StartJunctionMode(JunctionMode.Adding)" aria-pressed="@(junctionMode == JunctionMode.Adding ? "true" : "false")">Add cause to AND…</button>
-            <button type="button" @onclick="() => StartJunctionMode(JunctionMode.Removing)" aria-pressed="@(junctionMode == JunctionMode.Removing ? "true" : "false")">Remove cause from AND…</button>
-            <button type="button" @onclick="Ungroup">Ungroup</button>
-        }
-        @if (SelectedEntity is { } current)
-        {
-            <input class="edit" @key="(editRevision, 0)" value="@current.Statement" @onchange="EditSelected" size="40" aria-label="Selected entity statement" />
-            <select @key="(editRevision, 1)" value="@current.Tag" @onchange="TagSelected" aria-label="Selected entity tag">
-                <option value="@EntityTag.None">No tag</option>
-                <option value="@EntityTag.Ude">UDE</option>
-                <option value="@EntityTag.CoreProblem">Core problem</option>
-            </select>
-        }
-        <button type="button" @onclick="() => Suggest(SuggestionKind.Cause)" disabled="@(selected is null || suggesting)">Suggest causes</button>
-        <button type="button" @onclick="() => Suggest(SuggestionKind.Effect)" disabled="@(selected is null || suggesting)">Suggest effects</button>
-        @if (selectedJunction is not null)
-        {
-            <button type="button" @onclick="() => Suggest(SuggestionKind.CoCause)" disabled="@suggesting">Suggest co-cause</button>
-        }
-        @if (selectedGhost is { } chosen)
-        {
-            <input class="edit" @bind="ghostEdit" @bind:event="oninput" disabled="@(chosen.Existing is not null)" size="40" aria-label="Suggestion statement" />
-            <button type="button" @onclick="AcceptGhost">Accept suggestion</button>
-            <button type="button" @onclick="DismissGhost">Dismiss suggestion</button>
-        }
-        <span class="zoom" role="group" aria-label="Zoom">
-            <button type="button" @onclick="() => ZoomBy(1 / ZoomStep)" aria-label="Zoom out">−</button>
-            <span class="level" aria-live="off">@((int)Math.Round(viewport.Scale * 100))%</span>
-            <button type="button" @onclick="() => ZoomBy(ZoomStep)" aria-label="Zoom in">+</button>
-            <button type="button" @onclick="Fit">Fit</button>
-        </span>
-        <button type="button" @onclick="RerunLayout" disabled="@(nudges.Count == 0)">Re-run layout</button>
-        <span class="message @(messageIsError ? "error" : "")" role="status">@message</span>
-    </div>
+    <Toolbar CanUndo="tree.CanUndo" CanRedo="tree.CanRedo" HasSelection="@(selected is not null)" HasJunction="@(selectedJunction is not null)"
+             SelectedEntity="SelectedEntity" Linking="linking" JunctionMode="junctionMode" GroupMemberCount="groupMembers.Count"
+             Suggesting="suggesting" SelectedGhost="selectedGhost" @bind-GhostEdit="ghostEdit"
+             ZoomPercent="@((int)Math.Round(viewport.Scale * 100))" CanRerunLayout="@(nudges.Count > 0)"
+             Message="@message" MessageIsError="messageIsError" EditRevision="editRevision"
+             OnUndo="Undo" OnRedo="Redo" OnAddCause="AddCause" OnAddEffect="AddEffect" OnToggleLinking="ToggleLinking"
+             OnStartGrouping="StartGrouping" OnApplyGrouping="ApplyGrouping" OnDelete="DeleteSelected"
+             OnStartJunctionMode="StartJunctionMode" OnUngroup="Ungroup" OnEditSelected="EditSelected" OnTagSelected="TagSelected"
+             OnSuggest="Suggest" OnAcceptGhost="AcceptGhost" OnDismissGhost="DismissGhost"
+             OnZoom="ZoomBy" OnFit="Fit" OnRerunLayout="RerunLayout" />
 
     <div class="workspace">
-    <div class="canvas" tabindex="0" @ref="canvasRef" @onkeydown="OnKeyDown" @onkeydown:preventDefault="@(selected is not null)"
-         @onwheel="OnWheel" @onwheel:preventDefault @onpointermove="OnPointerMove" @onpointerup="EndDrag" @onpointerleave="CancelDrag">
-        @if (tree.Entities.Count == 0)
-        {
-            <p class="empty">Add a first entity to begin.</p>
-        }
-        else
-        {
-            <svg xmlns="http://www.w3.org/2000/svg" @onclick="Deselect" @onpointerdown="StartPan">
-                <defs>
-                    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                        <path d="M0,0 L10,5 L0,10 z" fill="#555" />
-                    </marker>
-                </defs>
-                <g transform="translate(@Num(viewport.PanX) @Num(viewport.PanY)) scale(@Num(viewport.Scale))">
-                @foreach (var link in tree.Links)
-                {
-                    var linkSelected = selectedLink == link;
-                    <g @onclick="() => { if (!ConsumeSuppressedClick()) SelectLink(link); }" @onclick:stopPropagation style="cursor:pointer" aria-label="Causal link">
-                        <path d="@placement.LinkPath(link)" fill="none" stroke="transparent" stroke-width="14" />
-                        <path d="@placement.LinkPath(link)" fill="none" stroke="@(linkSelected ? SelectionColour : "#555")" stroke-width="@(linkSelected ? 3 : 1.5)" marker-end="url(#arrow)" />
-                    </g>
-                }
-                @foreach (var junction in tree.Junctions)
-                {
-                    var (arc, labelX, labelY) = placement.JunctionArc(junction);
-                    var junctionSelected = selectedJunction == junction.Id;
-                    var colour = junctionSelected ? SelectionColour : TreeSvg.JunctionColour;
-                    <g @onclick="() => { if (!ConsumeSuppressedClick()) SelectJunction(junction.Id); }" @onclick:stopPropagation style="cursor:pointer" aria-label="AND-junction">
-                        <path d="@arc" fill="none" stroke="transparent" stroke-width="14" />
-                        <path d="@arc" fill="none" stroke="@colour" stroke-width="4" stroke-linecap="round" />
-                        <text x="@labelX" y="@labelY" text-anchor="middle" font-size="10" font-weight="bold" font-family="sans-serif" fill="@colour">AND</text>
-                    </g>
-                }
-                @foreach (var entity in tree.Entities)
-                {
-                    var (x, y) = placement.Positions[entity.Id];
-                    var isSelected = selected == entity.Id;
-                    <g @onclick="() => { if (!ConsumeSuppressedClick()) Select(entity.Id); }" @onclick:stopPropagation
-                       @onpointerdown="e => StartEntityDrag(entity.Id, e)" @onpointerdown:stopPropagation style="cursor:pointer">
-                        <rect x="@x" y="@y" width="@TreeLayout.EntityWidth" height="@TreeLayout.EntityHeight" rx="6"
-                              fill="#f4f6fa" stroke="@(isSelected ? SelectionColour : groupMembers.Contains(entity.Id) ? TreeSvg.JunctionColour : "#888")" stroke-width="@(isSelected || groupMembers.Contains(entity.Id) ? 3 : 1.2)" />
-                        <text x="@(x + 6)" y="@(y - 4)" font-size="11" font-weight="bold" font-family="sans-serif" fill="@(entity.Tag == EntityTag.Ude ? "#b71c1c" : "#1b5e20")">@TreeSvg.TagLabel(entity.Tag)</text>
-                        <text x="@(x + TreeLayout.EntityWidth / 2)" y="@(y + TreeLayout.EntityHeight / 2 + 4)" text-anchor="middle" font-size="12" font-family="sans-serif">@TreeSvg.TruncateForDisplay(entity.Statement)</text>
-                    </g>
-                }
-                @if (suggestions is not null && placement.Positions.TryGetValue(ghostAnchor, out var anchor))
-                {
-                    var ghosts = suggestions.Pending;
-                    @for (var i = 0; i < ghosts.Count; i++)
-                    {
-                        var ghost = ghosts[i];
-                        var (gx, gy) = GhostPosition(anchor, ghost.Kind, i, ghosts.Count);
-                        var picked = selectedGhost == ghost;
-                        var below = ghost.Kind != SuggestionKind.Effect;
-                        var (fromX, fromY, toX, toY) = below
-                            ? (gx + TreeLayout.EntityWidth / 2, gy, anchor.X + TreeLayout.EntityWidth / 2, anchor.Y + TreeLayout.EntityHeight)
-                            : (anchor.X + TreeLayout.EntityWidth / 2, anchor.Y, gx + TreeLayout.EntityWidth / 2, gy + TreeLayout.EntityHeight);
-                        <g @onclick="() => SelectGhost(ghost)" @onclick:stopPropagation @onpointerdown:stopPropagation style="cursor:pointer" aria-label="Suggestion" opacity="0.8">
-                            <title>@ghost.Statement</title>
-                            <path d="M@Num(fromX),@Num(fromY) L@Num(toX),@Num(toY)" fill="none" stroke="#777" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow)" />
-                            <rect x="@Num(gx)" y="@Num(gy)" width="@TreeLayout.EntityWidth" height="@TreeLayout.EntityHeight" rx="6"
-                                  fill="#fff" stroke="@(picked ? SelectionColour : "#777")" stroke-width="@(picked ? 3 : 1.5)" stroke-dasharray="6 4" />
-                            @if (ghost.Existing is not null)
-                            {
-                                <g><text x="@Num(gx + 6)" y="@Num(gy - 4)" font-size="11" font-weight="bold" font-family="sans-serif" fill="#555">EXISTING</text></g>
-                            }
-                            <text x="@Num(gx + TreeLayout.EntityWidth / 2)" y="@Num(gy + TreeLayout.EntityHeight / 2 + 4)" text-anchor="middle" font-size="12" font-style="italic" font-family="sans-serif" fill="#555">@TreeSvg.TruncateForDisplay(ghost.Statement)</text>
-                        </g>
-                    }
-                }
-                </g>
-            </svg>
-        }
-    </div>
+    <EditorCanvas @ref="canvas" Tree="tree" Placement="placement" Viewport="viewport" Selected="selected" SelectedJunction="selectedJunction"
+                  SelectedLink="selectedLink" GroupMembers="groupMembers" Suggestions="suggestions" GhostAnchor="ghostAnchor"
+                  SelectedGhost="selectedGhost" ConsumeSuppressedClick="ConsumeSuppressedClick"
+                  OnKeyDown="OnKeyDown" OnWheel="OnWheel" OnPointerMove="OnPointerMove" OnPointerUp="EndDrag" OnPointerLeave="CancelDrag"
+                  OnStartPan="StartPan" OnStartEntityDrag="@(drag => StartEntityDrag(drag.Id, drag.Args))" OnDeselect="Deselect" OnSelectEntity="Select"
+                  OnSelectLink="SelectLink" OnSelectJunction="SelectJunction" OnSelectGhost="SelectGhost" />
 
     <aside class="summary" aria-label="Tree summary">
         <h2>Tree summary</h2>
-        @SummarySection("UDEs with no path to a Core problem", summary.UdesWithoutCoreProblem)
-        @SummarySection("Core problems that explain no UDE", summary.CoreProblemsExplainingNoUde)
-        @SummarySection("Unconnected entities", summary.UnconnectedEntities)
-        @SummarySection("Root causes", summary.RootCauses)
-        <section>
-            <h3>Open reservations (@summary.OpenReservations.Count)</h3>
-            @if (summary.OpenReservations.Count > 0)
-            {
-                <ul>
-                    @foreach (var reservation in summary.OpenReservations)
-                    {
-                        <li>
-                            <button type="button" class="link" @onclick="() => SelectTarget(reservation.Target)">@CategoryLabel(reservation.Category): @Describe(reservation.Target)</button>
-                            @if (reservation.Note != "") { <span class="note"> – @reservation.Note</span> }
-                        </li>
-                    }
-                </ul>
-            }
-        </section>
-        @if (CurrentTarget is { } target)
-        {
-            <section class="reservations" aria-label="Reservations">
-                <h2>Reservations</h2>
-                <p class="target">@Describe(target)</p>
-                <ul>
-                    @foreach (var category in Enum.GetValues<ClrCategory>())
-                    {
-                        var existing = tree.Reservations.FirstOrDefault(r => r.Target == target && r.Category == category);
-                        <li>
-                            <span class="category">@CategoryLabel(category)</span>
-                            @if (existing is null)
-                            {
-                                <button type="button" @onclick="() => Raise(target, category)">Raise</button>
-                            }
-                            else
-                            {
-                                <select @key="(editRevision, existing.Id, 0)" value="@existing.State" @onchange="e => ChangeReservationState(existing.Id, e)" aria-label="@(CategoryLabel(category) + " state")">
-                                    <option value="@ReservationState.Open">Open</option>
-                                    <option value="@ReservationState.Resolved">Resolved</option>
-                                    <option value="@ReservationState.Dismissed">Dismissed</option>
-                                </select>
-                                <input @key="(editRevision, existing.Id, 1)" value="@existing.Note" @onchange="e => ChangeReservationNote(existing.Id, e)" placeholder="Note" aria-label="@(CategoryLabel(category) + " note")" />
-                            }
-                        </li>
-                    }
-                </ul>
-            </section>
-        }
+        <TreeReport Tree="tree" Summary="summary" OnSelectEntity="Select" OnSelectTarget="SelectTarget" />
+        <ReservationPanel Tree="tree" Target="CurrentTarget" EditRevision="editRevision"
+                          OnRaise="@(raised => Raise(raised.Target, raised.Category))"
+                          OnChangeState="@(change => ChangeReservationState(change.Id, change.Args))" OnChangeNote="@(change => ChangeReservationNote(change.Id, change.Args))" />
     </aside>
     </div>
 </div>
@@ -238,10 +64,9 @@
     private string ghostEdit = "";
     private bool suggesting;
     private bool scopePrompted;   // the user is asked for a Scope the first time they request Suggestions without one
-    private ElementReference scopeInput;
+    private ScopeBar scopeBar = null!;
     private EntityId? selected;
     private bool linking;
-    private enum JunctionMode { None, Grouping, Adding, Removing }
     private JunctionMode junctionMode;
     private readonly HashSet<EntityId> groupMembers = [];
     private JunctionId? selectedJunction;
@@ -250,11 +75,10 @@
     private string message = "";
     private bool messageIsError;
     private int editRevision;   // changing it replaces the edit box, so it shows the kept statement again
-    private ElementReference canvasRef;
+    private EditorCanvas canvas = null!;
     private bool focusCanvas;
 
-    private const string SelectionColour = "#1565c0";   // keep in step with --selection in app.css
-    private const double ZoomStep = 1.25, WheelSensitivity = 0.0015, DragThreshold = 3;
+    private const double WheelSensitivity = 0.0015, DragThreshold = 3;
 
     private TreeSummary summary = new Tree().Summarise();
 
@@ -429,19 +253,6 @@
         }
     }
 
-    private RenderFragment SummarySection(string title, IReadOnlyList<Entity> entities) => @<section>
-        <h3>@title (@entities.Count)</h3>
-        @if (entities.Count > 0)
-        {
-            <ul>
-                @foreach (var entity in entities)
-                {
-                    <li><button type="button" class="link" @onclick="() => Select(entity.Id)">@entity.Statement</button></li>
-                }
-            </ul>
-        }
-    </section>;
-
     private Entity? SelectedEntity => selected is { } id ? tree.Entities.First(e => e.Id == id) : null;
 
     private ReservationTarget? CurrentTarget =>
@@ -449,32 +260,6 @@
         : selectedLink is { } link ? new OnLink(link)
         : selected is { } entity ? new OnEntity(entity)
         : null;
-
-    private string StatementOf(EntityId id) => tree.Entities.First(e => e.Id == id).Statement;
-
-    private string Describe(ReservationTarget target) => target switch
-    {
-        OnEntity entity => StatementOf(entity.Entity),
-        OnLink link => $"{StatementOf(link.Link.Cause)} → {StatementOf(link.Link.Effect)}",
-        OnJunction junction => DescribeJunction(tree.Junctions.First(j => j.Id == junction.Junction)),
-        _ => throw new InvalidOperationException($"Unhandled reservation target {target.GetType().Name}.")
-    };
-
-    private string DescribeJunction(AndJunction junction) =>
-        $"AND of {string.Join(" + ", junction.Causes.Select(StatementOf))} → {StatementOf(junction.Effect)}";
-
-    private static string CategoryLabel(ClrCategory category) => category switch
-    {
-        ClrCategory.Clarity => "Clarity",
-        ClrCategory.EntityExistence => "Entity existence",
-        ClrCategory.CausalityExistence => "Causality existence",
-        ClrCategory.CauseInsufficiency => "Cause insufficiency",
-        ClrCategory.AdditionalCause => "Additional cause",
-        ClrCategory.CauseEffectReversal => "Cause-effect reversal",
-        ClrCategory.PredictedEffectExistence => "Predicted effect existence",
-        ClrCategory.Tautology => "Tautology",
-        _ => throw new InvalidOperationException($"Unhandled CLR category {category}.")
-    };
 
     // The text typed in the "add entity" box names the next entity added, otherwise the default is used.
     private string TakeStatement(string fallback)
@@ -587,7 +372,7 @@
         {
             scopePrompted = true;
             Report("Suggestions work best with a Scope. Write one, then ask again, or ask again to continue without.");
-            await scopeInput.FocusAsync();
+            await scopeBar.FocusAsync();
             return;
         }
         var asked = tree;
@@ -661,16 +446,6 @@
         selectedGhost = null;
         if (suggestions.Pending.Count == 0) suggestions = null;
         focusCanvas = true;
-    }
-
-    // Ghosts sit in a row of their own, centred on their Entity: below the whole tree for causes and above it for effects, so they never cover an Entity.
-    private (double X, double Y) GhostPosition((double X, double Y) anchor, SuggestionKind kind, int index, int count)
-    {
-        var x = anchor.X + (index - (count - 1) / 2.0) * (TreeLayout.EntityWidth + 30);
-        var y = kind == SuggestionKind.Effect
-            ? placement.Positions.Values.Min(p => p.Y) - TreeLayout.EntityHeight - 60
-            : placement.Positions.Values.Max(p => p.Y) + TreeLayout.EntityHeight + 60;
-        return (x, y);
     }
 
     private void SelectLink(CausalLink link)
@@ -872,7 +647,7 @@
         await SaveIfNeeded();
         if (!focusCanvas) return;
         focusCanvas = false;
-        await canvasRef.FocusAsync();
+        await canvas.Element.FocusAsync();
     }
 
     private void Begin() => Report("");
@@ -906,12 +681,9 @@
         return suppressed;
     }
 
-    // SVG attributes need invariant numbers whatever the browser's culture.
-    private static string Num(double value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
     private async Task<(double Left, double Top, double Width, double Height)> CanvasRect()
     {
-        var rect = await Js.InvokeAsync<double[]>("tocBuilder.rect", canvasRef);
+        var rect = await Js.InvokeAsync<double[]>("tocBuilder.rect", canvas.Element);
         return (rect[0], rect[1], rect[2], rect[3]);
     }
 
