@@ -1,11 +1,11 @@
 namespace TocBuilder.Domain.Tests;
 
-public class TreeSummaryTests
+public class TreeReportTests
 {
     [Fact]
-    public void An_empty_tree_has_an_empty_summary()
+    public void An_empty_tree_has_an_empty_report()
     {
-        var summary = new Tree().Summarise();
+        var summary = new Tree().Report();
 
         Assert.Empty(summary.UdesWithoutCoreProblem);
         Assert.Empty(summary.CoreProblemsExplainingNoUde);
@@ -23,7 +23,7 @@ public class TreeSummaryTests
         tree.SetTag(ude.Id, EntityTag.Ude);
         tree.SetTag(core.Id, EntityTag.CoreProblem);
 
-        var summary = tree.Summarise();
+        var summary = tree.Report();
 
         Assert.Empty(summary.UdesWithoutCoreProblem);
         Assert.Empty(summary.CoreProblemsExplainingNoUde);
@@ -37,7 +37,7 @@ public class TreeSummaryTests
         tree.AddCause(ude.Id, "Orders wait in a queue");
         tree.SetTag(ude.Id, EntityTag.Ude);
 
-        Assert.Equal([Tagged(tree, ude.Id, EntityTag.Ude)], tree.Summarise().UdesWithoutCoreProblem);
+        Assert.Equal([Tagged(tree, ude.Id, EntityTag.Ude)], tree.Report().UdesWithoutCoreProblem);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class TreeSummaryTests
         var core = tree.AddCause(effect.Id, "Work is released without regard to capacity");
         tree.SetTag(core.Id, EntityTag.CoreProblem);   // the effect it explains is not tagged as a UDE
 
-        Assert.Equal([Tagged(tree, core.Id, EntityTag.CoreProblem)], tree.Summarise().CoreProblemsExplainingNoUde);
+        Assert.Equal([Tagged(tree, core.Id, EntityTag.CoreProblem)], tree.Report().CoreProblemsExplainingNoUde);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class TreeSummaryTests
         tree.SetTag(ude.Id, EntityTag.Ude);
         tree.SetTag(core.Id, EntityTag.CoreProblem);
 
-        var summary = tree.Summarise();
+        var summary = tree.Report();
 
         Assert.Empty(summary.UdesWithoutCoreProblem);
         Assert.Empty(summary.CoreProblemsExplainingNoUde);
@@ -76,7 +76,7 @@ public class TreeSummaryTests
         tree.SetTag(ude.Id, EntityTag.Ude);
         tree.SetTag(core.Id, EntityTag.CoreProblem);
 
-        var summary = tree.Summarise();
+        var summary = tree.Report();
 
         Assert.Equal([Tagged(tree, ude.Id, EntityTag.Ude)], summary.UdesWithoutCoreProblem);
         Assert.Equal([Tagged(tree, core.Id, EntityTag.CoreProblem)], summary.CoreProblemsExplainingNoUde);
@@ -90,7 +90,7 @@ public class TreeSummaryTests
         tree.AddCause(effect.Id, "Orders wait in a queue");
         var alone = tree.AddEntity("Unrelated observation");
 
-        Assert.Equal([alone], tree.Summarise().UnconnectedEntities);
+        Assert.Equal([alone], tree.Report().UnconnectedEntities);
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class TreeSummaryTests
         var rootB = tree.AddCause(effect.Id, "Carrier delays");
         tree.AddEntity("Unrelated observation");   // unconnected, so reported there and not as a root cause
 
-        Assert.Equal([rootA, rootB], tree.Summarise().RootCauses);
+        Assert.Equal([rootA, rootB], tree.Report().RootCauses);
     }
 
     [Fact]
@@ -115,24 +115,24 @@ public class TreeSummaryTests
         var deeper = tree.AddCause(core.Id, "Managers are measured on utilisation");
         tree.SetTag(core.Id, EntityTag.CoreProblem);
 
-        Assert.Equal([deeper], tree.Summarise().RootCauses);
+        Assert.Equal([deeper], tree.Report().RootCauses);
     }
 
     [Fact]
-    public void The_summary_follows_edits_and_never_blocks_them()
+    public void The_report_follows_edits_and_never_blocks_them()
     {
         var tree = new Tree();
         var ude = tree.AddEntity("Late deliveries");
         tree.SetTag(ude.Id, EntityTag.Ude);
-        Assert.Single(tree.Summarise().UdesWithoutCoreProblem);
+        Assert.Single(tree.Report().UdesWithoutCoreProblem);
 
         var core = tree.AddCause(ude.Id, "Work is released without regard to capacity");
         tree.SetTag(core.Id, EntityTag.CoreProblem);
-        Assert.Empty(tree.Summarise().UdesWithoutCoreProblem);
+        Assert.Empty(tree.Report().UdesWithoutCoreProblem);
 
         tree.Undo();
         tree.Undo();
-        Assert.Single(tree.Summarise().UdesWithoutCoreProblem);
+        Assert.Single(tree.Report().UdesWithoutCoreProblem);
         Assert.Equal(LinkOutcome.Linked, tree.Link(tree.AddEntity("Another cause").Id, ude.Id));   // unfinished work never blocks an edit
     }
 

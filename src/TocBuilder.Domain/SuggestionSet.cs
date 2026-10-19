@@ -10,7 +10,7 @@ public sealed record Suggestion(SuggestionKind Kind, string Statement, EntityId?
 
 public enum AcceptOutcome { Accepted, NoLongerValid, DuplicateStatement }
 
-/// <summary>The Suggestions waiting on one request, kept apart from the tree so that unaccepted ones never reach its state, Tree summary, JSON or exports.</summary>
+/// <summary>The Suggestions waiting on one request, kept apart from the tree so that unaccepted ones never reach its state, Tree report, JSON or exports.</summary>
 public sealed class SuggestionSet
 {
     private EntityId? _entity;       // set for an Entity's causes and effects

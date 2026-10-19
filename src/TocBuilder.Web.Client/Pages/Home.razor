@@ -36,9 +36,9 @@
                   OnStartPan="StartPan" OnStartEntityDrag="@(drag => StartEntityDrag(drag.Id, drag.Args))" OnDeselect="Deselect" OnSelectEntity="Select"
                   OnSelectLink="SelectLink" OnSelectJunction="SelectJunction" OnSelectGhost="SelectGhost" />
 
-    <aside class="summary" aria-label="Tree summary">
-        <h2>Tree summary</h2>
-        <TreeReport Tree="tree" Summary="summary" OnSelectEntity="Select" OnSelectTarget="SelectTarget" />
+    <aside class="report" aria-label="Tree report">
+        <h2>Tree report</h2>
+        <TreeReport Tree="tree" Report="report" OnSelectEntity="Select" OnSelectTarget="SelectTarget" />
         <ReservationPanel Tree="tree" Target="CurrentTarget" EditRevision="editRevision"
                           OnRaise="@(raised => Raise(raised.Target, raised.Category))"
                           OnChangeState="@(change => ChangeReservationState(change.Id, change.Args))" OnChangeNote="@(change => ChangeReservationNote(change.Id, change.Args))" />
@@ -80,7 +80,7 @@
 
     private const double WheelSensitivity = 0.0015, DragThreshold = 3;
 
-    private TreeSummary summary = new Tree().Summarise();
+    private TocBuilder.Domain.TreeReport report = new Tree().Report();
 
     private List<SavedTree> trees = [];
     private string currentId = "";
@@ -794,6 +794,6 @@
         unsaved = true;
         baseLayout = TreeLayout.Compute(tree);
         ApplyNudges();
-        summary = tree.Summarise();
+        report = tree.Report();
     }
 }

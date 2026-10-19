@@ -1,15 +1,15 @@
 @using TocBuilder.Domain
 
-<SummarySection Title="UDEs with no path to a Core problem" Entities="Summary.UdesWithoutCoreProblem" OnSelect="OnSelectEntity" />
-<SummarySection Title="Core problems that explain no UDE" Entities="Summary.CoreProblemsExplainingNoUde" OnSelect="OnSelectEntity" />
-<SummarySection Title="Unconnected entities" Entities="Summary.UnconnectedEntities" OnSelect="OnSelectEntity" />
-<SummarySection Title="Root causes" Entities="Summary.RootCauses" OnSelect="OnSelectEntity" />
+<ReportSection Title="UDEs with no path to a Core problem" Entities="Report.UdesWithoutCoreProblem" OnSelect="OnSelectEntity" />
+<ReportSection Title="Core problems that explain no UDE" Entities="Report.CoreProblemsExplainingNoUde" OnSelect="OnSelectEntity" />
+<ReportSection Title="Unconnected entities" Entities="Report.UnconnectedEntities" OnSelect="OnSelectEntity" />
+<ReportSection Title="Root causes" Entities="Report.RootCauses" OnSelect="OnSelectEntity" />
 <section>
-    <h3>Open reservations (@Summary.OpenReservations.Count)</h3>
-    @if (Summary.OpenReservations.Count > 0)
+    <h3>Open reservations (@Report.OpenReservations.Count)</h3>
+    @if (Report.OpenReservations.Count > 0)
     {
         <ul>
-            @foreach (var reservation in Summary.OpenReservations)
+            @foreach (var reservation in Report.OpenReservations)
             {
                 <li>
                     <button type="button" class="link" @onclick="() => OnSelectTarget.InvokeAsync(reservation.Target)">@ReservationText.CategoryLabel(reservation.Category): @ReservationText.Describe(Tree, reservation.Target)</button>
@@ -22,7 +22,7 @@
 
 @code {
     [Parameter, EditorRequired] public Tree Tree { get; set; } = null!;
-    [Parameter, EditorRequired] public TreeSummary Summary { get; set; } = null!;
+    [Parameter, EditorRequired] public TocBuilder.Domain.TreeReport Report { get; set; } = null!;
     [Parameter] public EventCallback<EntityId> OnSelectEntity { get; set; }
     [Parameter] public EventCallback<ReservationTarget> OnSelectTarget { get; set; }
 }
