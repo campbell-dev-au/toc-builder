@@ -79,6 +79,28 @@ public class AndJunctionTests
     }
 
     [Fact]
+    public void Make_AND_for_a_cause_already_in_a_junction_of_the_effect_is_refused()
+    {
+        var (tree, _, a, b, c) = TreeWithThreeCauses();
+        tree.MakeAnd([a.Id, b.Id]);
+
+        var result = tree.MakeAnd([b.Id, c.Id]);
+
+        Assert.Equal(JunctionOutcome.AlreadyInJunction, result.Outcome);
+        Assert.Single(tree.Junctions);
+    }
+
+    [Fact]
+    public void Checking_Make_AND_reports_the_outcome_without_changing_the_tree()
+    {
+        var (tree, _, a, b, _) = TreeWithThreeCauses();
+
+        Assert.Equal(JunctionOutcome.TooFewCauses, tree.CheckMakeAnd([a.Id]));
+        Assert.Equal(JunctionOutcome.Done, tree.CheckMakeAnd([a.Id, b.Id]));
+        Assert.Empty(tree.Junctions);
+    }
+
+    [Fact]
     public void Make_AND_is_one_undo_step()
     {
         var (tree, _, a, b, _) = TreeWithThreeCauses();
