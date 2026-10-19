@@ -31,7 +31,6 @@ h1:focus {
 .editor .view { display: inline-flex; gap: 0.25rem; }
 .editor .view button[aria-pressed="true"] { font-weight: bold; border-color: var(--selection); }
 .editor .zoom .level { min-width: 3rem; text-align: center; }
-.editor .canvas:focus-visible { box-shadow: 0 0 0 2px var(--selection); }
 .editor .empty { color: #666; padding: 1rem; }
 .editor .global-bar, .editor .panel .actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
 .editor button[aria-pressed="true"] { background: var(--selection); color: #fff; }
