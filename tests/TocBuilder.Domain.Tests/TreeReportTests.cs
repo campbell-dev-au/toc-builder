@@ -5,12 +5,12 @@ public class TreeReportTests
     [Fact]
     public void An_empty_tree_has_an_empty_report()
     {
-        var summary = new Tree().Report();
+        var report = new Tree().Report();
 
-        Assert.Empty(summary.UdesWithoutCoreProblem);
-        Assert.Empty(summary.CoreProblemsExplainingNoUde);
-        Assert.Empty(summary.UnconnectedEntities);
-        Assert.Empty(summary.RootCauses);
+        Assert.Empty(report.UdesWithoutCoreProblem);
+        Assert.Empty(report.CoreProblemsExplainingNoUde);
+        Assert.Empty(report.UnconnectedEntities);
+        Assert.Empty(report.RootCauses);
     }
 
     [Fact]
@@ -23,10 +23,10 @@ public class TreeReportTests
         tree.SetTag(ude.Id, EntityTag.Ude);
         tree.SetTag(core.Id, EntityTag.CoreProblem);
 
-        var summary = tree.Report();
+        var report = tree.Report();
 
-        Assert.Empty(summary.UdesWithoutCoreProblem);
-        Assert.Empty(summary.CoreProblemsExplainingNoUde);
+        Assert.Empty(report.UdesWithoutCoreProblem);
+        Assert.Empty(report.CoreProblemsExplainingNoUde);
     }
 
     [Fact]
@@ -61,10 +61,10 @@ public class TreeReportTests
         tree.SetTag(ude.Id, EntityTag.Ude);
         tree.SetTag(core.Id, EntityTag.CoreProblem);
 
-        var summary = tree.Report();
+        var report = tree.Report();
 
-        Assert.Empty(summary.UdesWithoutCoreProblem);
-        Assert.Empty(summary.CoreProblemsExplainingNoUde);
+        Assert.Empty(report.UdesWithoutCoreProblem);
+        Assert.Empty(report.CoreProblemsExplainingNoUde);
     }
 
     [Fact]
@@ -76,10 +76,10 @@ public class TreeReportTests
         tree.SetTag(ude.Id, EntityTag.Ude);
         tree.SetTag(core.Id, EntityTag.CoreProblem);
 
-        var summary = tree.Report();
+        var report = tree.Report();
 
-        Assert.Equal([Tagged(tree, ude.Id, EntityTag.Ude)], summary.UdesWithoutCoreProblem);
-        Assert.Equal([Tagged(tree, core.Id, EntityTag.CoreProblem)], summary.CoreProblemsExplainingNoUde);
+        Assert.Equal([Tagged(tree, ude.Id, EntityTag.Ude)], report.UdesWithoutCoreProblem);
+        Assert.Equal([Tagged(tree, core.Id, EntityTag.CoreProblem)], report.CoreProblemsExplainingNoUde);
     }
 
     [Fact]
