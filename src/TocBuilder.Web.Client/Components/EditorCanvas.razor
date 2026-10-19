@@ -50,7 +50,7 @@
                     <text x="@(x + w / 2)" y="@(View == ViewMode.Text ? y + TreeLayout.TextPadding : y + h / 2 + (lines.Count == 1 ? 4 : -2))" text-anchor="middle" font-size="12" font-family="sans-serif">
                         @for (var i = 0; i < lines.Count; i++)
                         {
-                            <tspan x="@(x + w / 2)" dy="@(i == 0 ? 0 : 14)">@lines[i]</tspan>
+                            <tspan x="@(x + w / 2)" dy="@(i == 0 ? 0 : TreeLayout.TextLineHeight)">@lines[i]</tspan>
                         }
                     </text>
                 </g>
