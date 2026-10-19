@@ -28,7 +28,7 @@
                   OnStartPan="StartPan" OnStartEntityDrag="@(drag => StartEntityDrag(drag.Id, drag.Args))" OnDeselect="Deselect" OnSelectEntity="Select" OnToggleEntity="ToggleSelect"
                   OnSelectLink="SelectLink" OnSelectJunction="SelectJunction" OnSelectGhost="SelectGhost" />
 
-    <ContextPanel Tree="tree" Report="report" Target="CurrentTarget" SelectedEntity="SelectedEntity" SelectedEntityCount="selection.Count" MakeAndUnavailable="MakeAndUnavailable" SelectedJunction="selectedJunction"
+    <ContextPanel Tree="tree" Report="report" Target="CurrentTarget" SelectedEntity="SelectedEntity" SelectedEntityCount="selection.Count" MakeAndUnavailable="@MakeAndUnavailable" SelectedJunction="selectedJunction"
                   Linking="linking" Suggesting="suggesting"
                   SelectedGhost="selectedGhost" @bind-GhostEdit="ghostEdit" EditRevision="editRevision"
                   OnAddCause="AddCause" OnAddEffect="AddEffect" OnToggleLinking="ToggleLinking" OnMakeAnd="MakeAnd"
