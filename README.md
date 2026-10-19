@@ -2,6 +2,18 @@
 
 A web tool for building Theory of Constraints Current Reality Trees. It enforces TOC structure and offers on-request AI suggestions. See `CONTEXT.md` for the glossary and `docs/adr/` for design decisions.
 
+## Running locally
+
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/download). From the repo root:
+
+```sh
+dotnet run --project src/TocBuilder.Web --launch-profile http
+```
+
+Then open <http://localhost:5006>. Trees are saved in your browser's localStorage, so there is nothing else to set up.
+
+Run the tests with `dotnet test`.
+
 ## Agent skills
 
 This repo is worked on with the coding-agent skills from [`mattpocock/skills`](https://github.com/mattpocock/skills). Install them into your checkout with:
