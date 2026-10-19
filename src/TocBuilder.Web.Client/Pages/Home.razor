@@ -2,6 +2,7 @@
 @using TocBuilder.Domain
 @inject TreeLibrary Library
 @inject IJSRuntime Js
+@inject ISuggestionProvider Provider
 
 <PageTitle>TOC Builder</PageTitle>
 
@@ -28,6 +29,10 @@
         <button type="button" @onclick="() => ExportImage(png: false)" disabled="@(tree.Entities.Count == 0)">Export SVG</button>
         <button type="button" @onclick="() => ExportImage(png: true)" disabled="@(tree.Entities.Count == 0)">Export PNG</button>
         <label class="import">Import JSON <InputFile OnChange="ImportTree" accept=".json,application/json" /></label>
+    </div>
+
+    <div class="scope">
+        <label>Scope <input @key="(editRevision, 3)" value="@tree.Scope" @onchange="EditScope" size="80" placeholder="The problem domain, sent with each request for suggestions" aria-label="Scope" /></label>
     </div>
 
     <form class="add" @onsubmit="AddEntity">
@@ -61,6 +66,18 @@
                 <option value="@EntityTag.Ude">UDE</option>
                 <option value="@EntityTag.CoreProblem">Core problem</option>
             </select>
+        }
+        <button type="button" @onclick="() => Suggest(SuggestionKind.Cause)" disabled="@(selected is null || suggesting)">Suggest causes</button>
+        <button type="button" @onclick="() => Suggest(SuggestionKind.Effect)" disabled="@(selected is null || suggesting)">Suggest effects</button>
+        @if (selectedJunction is not null)
+        {
+            <button type="button" @onclick="() => Suggest(SuggestionKind.CoCause)" disabled="@suggesting">Suggest co-cause</button>
+        }
+        @if (selectedGhost is { } chosen)
+        {
+            <input class="edit" @bind="ghostEdit" @bind:event="oninput" disabled="@(chosen.Existing is not null)" size="40" aria-label="Suggestion statement" />
+            <button type="button" @onclick="AcceptGhost">Accept suggestion</button>
+            <button type="button" @onclick="DismissGhost">Dismiss suggestion</button>
         }
         <span class="zoom" role="group" aria-label="Zoom">
             <button type="button" @onclick="() => ZoomBy(1 / ZoomStep)" aria-label="Zoom out">−</button>
@@ -118,6 +135,31 @@
                         <text x="@(x + 6)" y="@(y - 4)" font-size="11" font-weight="bold" font-family="sans-serif" fill="@(entity.Tag == EntityTag.Ude ? "#b71c1c" : "#1b5e20")">@TreeSvg.TagLabel(entity.Tag)</text>
                         <text x="@(x + TreeLayout.EntityWidth / 2)" y="@(y + TreeLayout.EntityHeight / 2 + 4)" text-anchor="middle" font-size="12" font-family="sans-serif">@TreeSvg.TruncateForDisplay(entity.Statement)</text>
                     </g>
+                }
+                @if (suggestions is not null && placement.Positions.TryGetValue(ghostAnchor, out var anchor))
+                {
+                    var ghosts = suggestions.Pending;
+                    @for (var i = 0; i < ghosts.Count; i++)
+                    {
+                        var ghost = ghosts[i];
+                        var (gx, gy) = GhostPosition(anchor, ghost.Kind, i, ghosts.Count);
+                        var picked = selectedGhost == ghost;
+                        var below = ghost.Kind != SuggestionKind.Effect;
+                        var (fromX, fromY, toX, toY) = below
+                            ? (gx + TreeLayout.EntityWidth / 2, gy, anchor.X + TreeLayout.EntityWidth / 2, anchor.Y + TreeLayout.EntityHeight)
+                            : (anchor.X + TreeLayout.EntityWidth / 2, anchor.Y, gx + TreeLayout.EntityWidth / 2, gy + TreeLayout.EntityHeight);
+                        <g @onclick="() => SelectGhost(ghost)" @onclick:stopPropagation @onpointerdown:stopPropagation style="cursor:pointer" aria-label="Suggestion" opacity="0.8">
+                            <title>@ghost.Statement</title>
+                            <path d="M@Num(fromX),@Num(fromY) L@Num(toX),@Num(toY)" fill="none" stroke="#777" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow)" />
+                            <rect x="@Num(gx)" y="@Num(gy)" width="@TreeLayout.EntityWidth" height="@TreeLayout.EntityHeight" rx="6"
+                                  fill="#fff" stroke="@(picked ? SelectionColour : "#777")" stroke-width="@(picked ? 3 : 1.5)" stroke-dasharray="6 4" />
+                            @if (ghost.Existing is not null)
+                            {
+                                <g><text x="@Num(gx + 6)" y="@Num(gy - 4)" font-size="11" font-weight="bold" font-family="sans-serif" fill="#555">EXISTING</text></g>
+                            }
+                            <text x="@Num(gx + TreeLayout.EntityWidth / 2)" y="@Num(gy + TreeLayout.EntityHeight / 2 + 4)" text-anchor="middle" font-size="12" font-style="italic" font-family="sans-serif" fill="#555">@TreeSvg.TruncateForDisplay(ghost.Statement)</text>
+                        </g>
+                    }
                 }
                 </g>
             </svg>
@@ -190,6 +232,11 @@
     private double lastX, lastY;   // where the pointer was when the drag last moved something
     private bool dragMoved;
     private bool suppressClick;   // the click that ends a drag must not select or deselect anything
+    private SuggestionSet? suggestions;   // the Suggestions on screen as ghost Entities; never part of the tree
+    private EntityId ghostAnchor;   // the Entity the ghosts hang off
+    private Suggestion? selectedGhost;
+    private string ghostEdit = "";
+    private bool suggesting;
     private EntityId? selected;
     private bool linking;
     private enum JunctionMode { None, Grouping, Adding, Removing }
@@ -250,6 +297,7 @@
         nudges.Clear();
         foreach (var (entity, nudge) in openedNudges ?? new Dictionary<EntityId, Nudge>()) nudges[entity] = nudge;
         viewport = Viewport.Identity;
+        ClearSuggestions();
         CancelDrag();
         ClearSelection();
         ClearModes();
@@ -461,6 +509,7 @@
         var id = selected.Value;
         Begin();
         tree.Delete(id);
+        ClearSuggestions();
         selected = null;
         ClearModes();
         Refresh();
@@ -512,6 +561,109 @@
         Refresh();
     }
 
+    private void EditScope(ChangeEventArgs e)
+    {
+        Begin();
+        tree.SetScope(e.Value?.ToString() ?? "");
+        Refresh();
+        editRevision++;   // show the trimmed scope
+    }
+
+    // Suggestions are only ever requested here, by the user pressing a button.
+    private async Task Suggest(SuggestionKind kind)
+    {
+        Begin();
+        EntityId anchor;
+        if (kind == SuggestionKind.CoCause)
+        {
+            if (selectedJunction is not { } junctionId) return;
+            anchor = tree.Junctions.First(j => j.Id == junctionId).Effect;
+        }
+        else if (selected is { } entity) anchor = entity;
+        else return;
+        var asked = tree;
+        var askedJunction = selectedJunction;
+        var request = new SuggestionRequest(tree.Scope, kind, StatementOf(anchor), tree.Entities);
+        suggesting = true;
+        IReadOnlyList<Suggestion> candidates;
+        try { candidates = await Provider.SuggestAsync(request); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Report($"Could not get suggestions: {ex.Message}", isError: true);
+            return;
+        }
+        finally { suggesting = false; }
+        if (!ReferenceEquals(asked, tree) || tree.Entities.All(e => e.Id != anchor)) return;   // another tree was opened, or the Entity deleted, while waiting
+        var set = kind == SuggestionKind.CoCause && askedJunction is { } junction
+            ? SuggestionSet.ForJunction(tree, junction, candidates)
+            : SuggestionSet.ForEntity(tree, anchor, candidates);
+        ClearSuggestions();
+        if (set.Pending.Count == 0) { Report("No valid suggestions."); return; }
+        suggestions = set;
+        ghostAnchor = anchor;
+    }
+
+    private void ClearSuggestions()
+    {
+        suggestions = null;
+        selectedGhost = null;
+    }
+
+    private void SelectGhost(Suggestion ghost)
+    {
+        if (ConsumeSuppressedClick()) return;
+        Begin();
+        ClearModes();
+        ClearSelection();
+        selectedGhost = ghost;
+        ghostEdit = ghost.Statement;
+        focusCanvas = true;
+    }
+
+    private void AcceptGhost()
+    {
+        if (suggestions is null || selectedGhost is not { } ghost) return;
+        Begin();
+        var edited = ghost.Existing is null && ghostEdit.Trim() != ghost.Statement ? ghostEdit : null;
+        AcceptOutcome outcome;
+        try { outcome = suggestions.Accept(tree, ghost, edited); }
+        catch (ArgumentException)
+        {
+            Report("A statement cannot be blank.", isError: true);
+            return;
+        }
+        switch (outcome)
+        {
+            case AcceptOutcome.Accepted: Report("Added the suggestion."); break;
+            case AcceptOutcome.DuplicateStatement: Report("An entity with that statement already exists.", isError: true); return;
+            case AcceptOutcome.NoLongerValid: Report("That suggestion no longer applies.", isError: true); break;
+        }
+        selectedGhost = null;
+        if (suggestions.Pending.Count == 0) suggestions = null;
+        Refresh();
+        focusCanvas = true;
+    }
+
+    private void DismissGhost()
+    {
+        if (suggestions is null || selectedGhost is not { } ghost) return;
+        Begin();
+        suggestions.Dismiss(ghost);
+        selectedGhost = null;
+        if (suggestions.Pending.Count == 0) suggestions = null;
+        focusCanvas = true;
+    }
+
+    // Ghosts sit in a row of their own, centred on their Entity: below the whole tree for causes and above it for effects, so they never cover an Entity.
+    private (double X, double Y) GhostPosition((double X, double Y) anchor, SuggestionKind kind, int index, int count)
+    {
+        var x = anchor.X + (index - (count - 1) / 2.0) * (TreeLayout.EntityWidth + 30);
+        var y = kind == SuggestionKind.Effect
+            ? placement.Positions.Values.Min(p => p.Y) - TreeLayout.EntityHeight - 60
+            : placement.Positions.Values.Max(p => p.Y) + TreeLayout.EntityHeight + 60;
+        return (x, y);
+    }
+
     private void SelectLink(CausalLink link)
     {
         Begin();
@@ -546,6 +698,7 @@
         ClearModes();
         if (selectedJunction is { } junction && tree.Junctions.All(j => j.Id != junction)) selectedJunction = null;
         if (selectedLink is { } link && !tree.Links.Contains(link)) selectedLink = null;
+        ClearSuggestions();   // the Entity they hang off may have gone
         editRevision++;   // the kept statement may differ after the restore, so rebuild the edit box
         Refresh();
         focusCanvas = true;
@@ -854,7 +1007,7 @@
     }
 
     // An entity, a junction and a link are never selected together.
-    private void ClearSelection() { selected = null; selectedJunction = null; selectedLink = null; }
+    private void ClearSelection() { selected = null; selectedJunction = null; selectedLink = null; selectedGhost = null; }
     private void Refresh()
     {
         unsaved = true;

@@ -35,7 +35,8 @@ public static class TreeSerializer
             [.. tree.Junctions.Select(j => new JunctionDto(j.Id.Value, j.Effect.Value, [.. j.Causes.Select(c => c.Value)]))],
             [.. tree.Reservations.Select(ToDto)],
             nextId, nextJunctionId, nextReservationId,
-            [.. (nudges ?? new Dictionary<EntityId, Nudge>()).Select(n => new NudgeDto(n.Key.Value, n.Value.X, n.Value.Y))]);
+            [.. (nudges ?? new Dictionary<EntityId, Nudge>()).Select(n => new NudgeDto(n.Key.Value, n.Value.X, n.Value.Y))],
+            tree.Scope);
         return JsonSerializer.Serialize(file, Options);
     }
 
@@ -101,6 +102,7 @@ public static class TreeSerializer
             file.Links.Select(l => new CausalLink(new EntityId(l.Cause), new EntityId(l.Effect))),
             file.Junctions.Select(j => new AndJunction(new JunctionId(j.Id), new EntityId(j.Effect), [.. j.Causes.Select(c => new EntityId(c))])),
             file.Reservations.Select(FromDto),
+            file.Scope ?? "",
             file.NextId, file.NextJunctionId, file.NextReservationId);
         var nudges = (file.Nudges ?? []).Where(n => entityIds.Contains(n.Entity)).DistinctBy(n => n.Entity)
             .ToDictionary(n => new EntityId(n.Entity), n => new Nudge(n.X, n.Y));   // a nudge for an Entity that is not there has nothing to move
@@ -145,7 +147,7 @@ public static class TreeSerializer
         return new Reservation(new ReservationId(r.Id), target, r.Category, r.State, r.Note);
     }
 
-    private sealed record FileDto(int Version, string Name, EntityDto[] Entities, LinkDto[] Links, JunctionDto[] Junctions, ReservationDto[] Reservations, int NextId, int NextJunctionId, int NextReservationId, NudgeDto[]? Nudges = null);
+    private sealed record FileDto(int Version, string Name, EntityDto[] Entities, LinkDto[] Links, JunctionDto[] Junctions, ReservationDto[] Reservations, int NextId, int NextJunctionId, int NextReservationId, NudgeDto[]? Nudges = null, string? Scope = null);
     private sealed record NudgeDto(int Entity, double X, double Y);
     private sealed record EntityDto(int Id, string Statement, EntityTag Tag);
     private sealed record LinkDto(int Cause, int Effect);
