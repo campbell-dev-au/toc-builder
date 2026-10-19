@@ -197,7 +197,7 @@
     {
         Begin();
         if (tree.Entities.Count == 0) return;
-        var svg = TreeSvg.Render(tree, placement, view);
+        var svg = TreeSvg.Render(tree, Nudged(TreeLayout.Compute(tree, ViewMode.Text)));   // always full statements, whichever view the canvas is in
         try
         {
             if (png) await Js.InvokeVoidAsync("tocBuilder.downloadPng", FileName(".png"), svg);
@@ -802,11 +802,13 @@
     private void ApplyNudges()
     {
         foreach (var id in nudges.Keys.Where(id => !baseLayout.Positions.ContainsKey(id)).ToList()) nudges.Remove(id);
-        placement = baseLayout with
-        {
-            Positions = baseLayout.Positions.ToDictionary(p => p.Key, p => nudges.TryGetValue(p.Key, out var n) ? (p.Value.X + n.X, p.Value.Y + n.Y) : p.Value)
-        };
+        placement = Nudged(baseLayout);
     }
+
+    private TreeLayout.Result Nudged(TreeLayout.Result layout) => layout with
+    {
+        Positions = layout.Positions.ToDictionary(p => p.Key, p => nudges.TryGetValue(p.Key, out var n) ? (p.Value.X + n.X, p.Value.Y + n.Y) : p.Value)
+    };
 
     // An entity, a junction and a link are never selected together.
     private void ClearSelection() { selected = null; selectedJunction = null; selectedLink = null; selectedGhost = null; }
