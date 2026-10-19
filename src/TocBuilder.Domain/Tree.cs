@@ -31,7 +31,7 @@ public readonly record struct JunctionId(int Value);
 /// <summary>Causes of one effect that are only jointly sufficient for it. Each cause also has its own Causal link to the effect.</summary>
 public sealed record AndJunction(JunctionId Id, EntityId Effect, IReadOnlyList<EntityId> Causes);
 
-public enum JunctionOutcome { Done, TooFewCauses, NotACauseOfEffect, AlreadyInJunction, WouldCreateCycle }
+public enum JunctionOutcome { Done, TooFewCauses, NotACauseOfEffect, AlreadyInJunction, WouldCreateCycle, DifferentEffects, AmbiguousEffect }
 
 public sealed record JunctionResult(JunctionOutcome Outcome, AndJunction? Junction = null);
 
@@ -232,6 +232,29 @@ public sealed class Tree
         foreach (var junction in _junctions.Where(j => j.Causes.Contains(id)).ToArray())
             Shrink(junction, id);
         PruneReservations();
+    }
+
+    /// <summary>Groups the selected Entities into one AND-junction under the one effect they all cause. Their Causal links are kept.</summary>
+    public JunctionResult MakeAnd(IReadOnlyCollection<EntityId> selected)
+    {
+        var (outcome, effect) = ResolveMakeAnd(selected);
+        return outcome == JunctionOutcome.Done ? Group(effect, selected) : new JunctionResult(outcome);
+    }
+
+    /// <summary>What <see cref="MakeAnd"/> would do, without doing it. <see cref="JunctionOutcome.Done"/> means the selection could be made an AND-junction.</summary>
+    public JunctionOutcome CheckMakeAnd(IReadOnlyCollection<EntityId> selected) => ResolveMakeAnd(selected).Outcome;
+
+    private (JunctionOutcome Outcome, EntityId Effect) ResolveMakeAnd(IReadOnlyCollection<EntityId> selected)
+    {
+        foreach (var id in selected) EnsureExists(id);
+        var distinct = selected.Distinct().ToArray();
+        if (distinct.Length < 2) return (JunctionOutcome.TooFewCauses, default);
+        var shared = _links.Where(l => l.Cause == distinct[0]).Select(l => l.Effect)
+            .Where(effect => distinct.All(c => _links.Contains(new CausalLink(c, effect)))).ToArray();
+        if (shared.Length == 0) return (JunctionOutcome.DifferentEffects, default);
+        if (shared.Length > 1) return (JunctionOutcome.AmbiguousEffect, default);
+        if (distinct.Any(c => InJunctionOf(shared[0], c))) return (JunctionOutcome.AlreadyInJunction, default);
+        return (JunctionOutcome.Done, shared[0]);
     }
 
     /// <summary>Groups existing causes of <paramref name="effect"/> into one AND-junction. Their Causal links are kept.</summary>

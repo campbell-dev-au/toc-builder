@@ -28,6 +28,90 @@ public class AndJunctionTests
     }
 
     [Fact]
+    public void Make_AND_groups_selected_causes_under_the_effect_they_share()
+    {
+        var (tree, effect, a, b, _) = TreeWithThreeCauses();
+
+        var result = tree.MakeAnd([a.Id, b.Id]);
+
+        Assert.Equal(JunctionOutcome.Done, result.Outcome);
+        var junction = Assert.Single(tree.Junctions);
+        Assert.Equal(effect.Id, junction.Effect);
+        Assert.Equal([a.Id, b.Id], junction.Causes);
+    }
+
+    [Fact]
+    public void Make_AND_with_fewer_than_two_causes_is_refused()
+    {
+        var (tree, _, a, _, _) = TreeWithThreeCauses();
+
+        Assert.Equal(JunctionOutcome.TooFewCauses, tree.MakeAnd([]).Outcome);
+        Assert.Equal(JunctionOutcome.TooFewCauses, tree.MakeAnd([a.Id]).Outcome);
+        Assert.Equal(JunctionOutcome.TooFewCauses, tree.MakeAnd([a.Id, a.Id]).Outcome);
+        Assert.Empty(tree.Junctions);
+    }
+
+    [Fact]
+    public void Make_AND_for_causes_with_different_effects_is_refused()
+    {
+        var (tree, _, a, _, _) = TreeWithThreeCauses();
+        var other = tree.AddEntity("Customers leave");
+        var otherCause = tree.AddCause(other.Id, "Complaints go unanswered");
+
+        var result = tree.MakeAnd([a.Id, otherCause.Id]);
+
+        Assert.Equal(JunctionOutcome.DifferentEffects, result.Outcome);
+        Assert.Empty(tree.Junctions);
+    }
+
+    [Fact]
+    public void Make_AND_for_causes_sharing_several_effects_is_refused_as_ambiguous()
+    {
+        var (tree, effect, a, b, _) = TreeWithThreeCauses();
+        var other = tree.AddEntity("Customers leave");
+        tree.Link(a.Id, other.Id);
+        tree.Link(b.Id, other.Id);
+
+        var result = tree.MakeAnd([a.Id, b.Id]);
+
+        Assert.Equal(JunctionOutcome.AmbiguousEffect, result.Outcome);
+        Assert.Empty(tree.Junctions);
+    }
+
+    [Fact]
+    public void Make_AND_for_a_cause_already_in_a_junction_of_the_effect_is_refused()
+    {
+        var (tree, _, a, b, c) = TreeWithThreeCauses();
+        tree.MakeAnd([a.Id, b.Id]);
+
+        var result = tree.MakeAnd([b.Id, c.Id]);
+
+        Assert.Equal(JunctionOutcome.AlreadyInJunction, result.Outcome);
+        Assert.Single(tree.Junctions);
+    }
+
+    [Fact]
+    public void Checking_Make_AND_reports_the_outcome_without_changing_the_tree()
+    {
+        var (tree, _, a, b, _) = TreeWithThreeCauses();
+
+        Assert.Equal(JunctionOutcome.TooFewCauses, tree.CheckMakeAnd([a.Id]));
+        Assert.Equal(JunctionOutcome.Done, tree.CheckMakeAnd([a.Id, b.Id]));
+        Assert.Empty(tree.Junctions);
+    }
+
+    [Fact]
+    public void Make_AND_is_one_undo_step()
+    {
+        var (tree, _, a, b, _) = TreeWithThreeCauses();
+        tree.MakeAnd([a.Id, b.Id]);
+
+        tree.Undo();
+
+        Assert.Empty(tree.Junctions);
+    }
+
+    [Fact]
     public void Grouping_fewer_than_two_distinct_causes_is_refused()
     {
         var (tree, effect, a, _, _) = TreeWithThreeCauses();

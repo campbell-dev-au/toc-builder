@@ -12,6 +12,19 @@
             </div>
         </section>
     }
+    else if (SelectedEntityCount >= 2)
+    {
+        <section class="selection" aria-label="Selection">
+            <h2>@SelectedEntityCount entities selected</h2>
+            <div class="actions">
+                <button type="button" @onclick="OnMakeAnd" disabled="@(MakeAndUnavailable is not null)">Make AND (Ctrl+Enter)</button>
+            </div>
+            @if (MakeAndUnavailable is { } reason)
+            {
+                <p class="hint">@reason</p>
+            }
+        </section>
+    }
     else if (SelectedEntity is { } current)
     {
         <section class="selection" aria-label="Entity">
@@ -36,24 +49,29 @@
                 <button type="button" @onclick="OnAddCause">Add cause (Tab)</button>
                 <button type="button" @onclick="OnAddEffect">Add effect</button>
                 <button type="button" @onclick="OnToggleLinking" aria-pressed="@(Linking ? "true" : "false")">Link: selected is a cause of…</button>
-                <button type="button" @onclick="OnStartGrouping" aria-pressed="@(JunctionMode == JunctionMode.Grouping ? "true" : "false")">AND-group causes…</button>
-                @if (JunctionMode == JunctionMode.Grouping)
-                {
-                    <button type="button" @onclick="OnApplyGrouping" disabled="@(GroupMemberCount < 2)">Apply AND-group (@GroupMemberCount)</button>
-                }
                 <button type="button" @onclick="() => OnSuggest.InvokeAsync(SuggestionKind.Cause)" disabled="@Suggesting">Suggest causes</button>
                 <button type="button" @onclick="() => OnSuggest.InvokeAsync(SuggestionKind.Effect)" disabled="@Suggesting">Suggest effects</button>
                 <button type="button" @onclick="OnDelete">Delete (Del)</button>
             </div>
         </section>
     }
-    else if (HasJunction)
+    else if (SelectedJunction is { } junctionId && Tree.Junctions.FirstOrDefault(j => j.Id == junctionId) is { } junction)
     {
         <section class="selection" aria-label="AND-junction">
             <h2>AND-junction</h2>
+            <ul class="members">
+                @foreach (var member in junction.Causes)
+                {
+                    <li>
+                        <span>@EntityText.Label(Tree.Entities.First(e => e.Id == member))</span>
+                        <button type="button" @onclick="() => OnRemoveFromJunction.InvokeAsync(member)" aria-label="Remove @Tree.Entities.First(e => e.Id == member).Code from AND-junction">Remove</button>
+                    </li>
+                }
+            </ul>
             <div class="actions">
-                <button type="button" @onclick="() => OnStartJunctionMode.InvokeAsync(JunctionMode.Adding)" aria-pressed="@(JunctionMode == JunctionMode.Adding ? "true" : "false")">Add cause to AND…</button>
-                <button type="button" @onclick="() => OnStartJunctionMode.InvokeAsync(JunctionMode.Removing)" aria-pressed="@(JunctionMode == JunctionMode.Removing ? "true" : "false")">Remove cause from AND…</button>
+                <button type="button" @onclick="OnToggleAddingCause" aria-pressed="@(AddingCause ? "true" : "false")">Add cause…</button>
+            </div>
+            <div class="actions">
                 <button type="button" @onclick="() => OnSuggest.InvokeAsync(SuggestionKind.CoCause)" disabled="@Suggesting">Suggest co-cause</button>
                 <button type="button" @onclick="OnUngroup">Ungroup</button>
             </div>
@@ -84,10 +102,11 @@
     [Parameter, EditorRequired] public TocBuilder.Domain.TreeReport Report { get; set; } = null!;
     [Parameter] public ReservationTarget? Target { get; set; }
     [Parameter] public Entity? SelectedEntity { get; set; }
-    [Parameter] public bool HasJunction { get; set; }   // an AND-junction is selected
+    [Parameter] public int SelectedEntityCount { get; set; }
+    [Parameter] public string? MakeAndUnavailable { get; set; }   // why Make AND cannot be used on the selection; null when it can
+    [Parameter] public JunctionId? SelectedJunction { get; set; }
+    [Parameter] public bool AddingCause { get; set; }   // the next Entity clicked joins the selected AND-junction
     [Parameter] public bool Linking { get; set; }
-    [Parameter] public JunctionMode JunctionMode { get; set; }
-    [Parameter] public int GroupMemberCount { get; set; }
     [Parameter] public bool Suggesting { get; set; }
     [Parameter] public Suggestion? SelectedGhost { get; set; }
     [Parameter] public string GhostEdit { get; set; } = "";
@@ -97,10 +116,10 @@
     [Parameter] public EventCallback OnAddCause { get; set; }
     [Parameter] public EventCallback OnAddEffect { get; set; }
     [Parameter] public EventCallback OnToggleLinking { get; set; }
-    [Parameter] public EventCallback OnStartGrouping { get; set; }
-    [Parameter] public EventCallback OnApplyGrouping { get; set; }
+    [Parameter] public EventCallback OnMakeAnd { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
-    [Parameter] public EventCallback<JunctionMode> OnStartJunctionMode { get; set; }
+    [Parameter] public EventCallback OnToggleAddingCause { get; set; }
+    [Parameter] public EventCallback<EntityId> OnRemoveFromJunction { get; set; }
     [Parameter] public EventCallback OnUngroup { get; set; }
     [Parameter] public EventCallback<ChangeEventArgs> OnEditSelected { get; set; }
     [Parameter] public EventCallback<ChangeEventArgs> OnSummarySelected { get; set; }
