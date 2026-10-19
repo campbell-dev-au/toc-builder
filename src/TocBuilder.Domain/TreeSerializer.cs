@@ -15,7 +15,7 @@ public sealed record ImportResult(ImportOutcome Outcome, string? Name = null, Tr
 /// <summary>Reads and writes a tree as a versioned JSON file.</summary>
 public static class TreeSerializer
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -26,22 +26,39 @@ public static class TreeSerializer
 
     public static string Export(string name, Tree tree, IReadOnlyDictionary<EntityId, Nudge>? nudges = null)
     {
-        var (nextId, nextJunctionId, nextReservationId) = tree.NextIds;
+        var (nextId, nextCode, nextJunctionId, nextReservationId) = tree.NextIds;
         var file = new FileDto(
             CurrentVersion,
             name,
-            [.. tree.Entities.Select(e => new EntityDto(e.Id.Value, e.Statement, e.Tag))],
+            [.. tree.Entities.Select(e => new EntityDto(e.Id.Value, e.Code, e.Statement, e.Tag))],
             [.. tree.Links.Select(l => new LinkDto(l.Cause.Value, l.Effect.Value))],
             [.. tree.Junctions.Select(j => new JunctionDto(j.Id.Value, j.Effect.Value, [.. j.Causes.Select(c => c.Value)]))],
             [.. tree.Reservations.Select(ToDto)],
             nextId, nextJunctionId, nextReservationId,
+            nextCode,
             [.. (nudges ?? new Dictionary<EntityId, Nudge>()).Select(n => new NudgeDto(n.Key.Value, n.Value.X, n.Value.Y))],
             tree.Scope);
         return JsonSerializer.Serialize(file, Options);
     }
 
     /// <summary>Each step rewrites a file of version N (the key) into version N + 1. Add one here whenever <see cref="CurrentVersion"/> goes up.</summary>
-    private static readonly Dictionary<int, Func<JsonObject, JsonObject>> Upgrades = [];
+    private static readonly Dictionary<int, Func<JsonObject, JsonObject>> Upgrades = new()
+    {
+        [1] = AddCodes,
+    };
+
+    /// <summary>Version 1 files had no Codes: give each Entity one in storage order and start the counter after the last.</summary>
+    private static JsonObject AddCodes(JsonObject root)
+    {
+        if (root["entities"] is JsonArray entities)
+        {
+            for (var i = 0; i < entities.Count; i++)
+                if (entities[i] is JsonObject entity) entity["code"] = $"E{i + 1}";
+            root["nextCode"] = entities.Count + 1;
+        }
+        root["version"] = 2;
+        return root;
+    }
 
     public static ImportResult Import(string json)
     {
@@ -67,7 +84,7 @@ public static class TreeSerializer
     private static ImportResult Build(FileDto file)
     {
         if (string.IsNullOrWhiteSpace(file.Name) || file.Entities is null || file.Links is null || file.Junctions is null || file.Reservations is null
-            || file.Entities.Any(e => e is null || e.Statement is null || !Enum.IsDefined(e.Tag))
+            || file.Entities.Any(e => e is null || e.Statement is null || !Enum.IsDefined(e.Tag) || CodeNumber(e.Code) is null)
             || file.Links.Any(l => l is null)
             || file.Junctions.Any(j => j is null || j.Causes is null)
             || (file.Nudges is not null && file.Nudges.Any(n => n is null))
@@ -92,22 +109,28 @@ public static class TreeSerializer
                 "junction" => junctionIds.Contains(r.A),
                 _ => false,
             })
+            && file.Entities.Select(e => e.Code).Distinct().Count() == file.Entities.Length
+            && file.NextCode > file.Entities.Select(e => CodeNumber(e.Code)!.Value).DefaultIfEmpty().Max()
             && file.NextId > entityIds.DefaultIfEmpty().Max()
             && file.NextJunctionId > junctionIds.DefaultIfEmpty().Max()
             && file.NextReservationId > file.Reservations.Select(r => r.Id).DefaultIfEmpty().Max();
         if (!consistent) return Corrupt("This file's entities, links, junctions and reservations do not agree with each other.");
 
         var tree = Tree.FromState(
-            file.Entities.Select(e => new Entity(new EntityId(e.Id), e.Statement, e.Tag)),
+            file.Entities.Select(e => new Entity(new EntityId(e.Id), e.Code, e.Statement, e.Tag)),
             file.Links.Select(l => new CausalLink(new EntityId(l.Cause), new EntityId(l.Effect))),
             file.Junctions.Select(j => new AndJunction(new JunctionId(j.Id), new EntityId(j.Effect), [.. j.Causes.Select(c => new EntityId(c))])),
             file.Reservations.Select(FromDto),
             file.Scope ?? "",
-            file.NextId, file.NextJunctionId, file.NextReservationId);
+            file.NextId, file.NextCode, file.NextJunctionId, file.NextReservationId);
         var nudges = (file.Nudges ?? []).Where(n => entityIds.Contains(n.Entity)).DistinctBy(n => n.Entity)
             .ToDictionary(n => new EntityId(n.Entity), n => new Nudge(n.X, n.Y));   // a nudge for an Entity that is not there has nothing to move
         return new ImportResult(ImportOutcome.Imported, file.Name, tree, Nudges: nudges);
     }
+
+    /// <summary>The number in a Code such as "E12", or null when the text is not a Code.</summary>
+    private static int? CodeNumber(string? code) =>
+        code is ['E', .. var digits] && digits.Length > 0 && digits[0] != '0' && int.TryParse(digits, out var number) ? number : null;
 
     private static bool HasCycle(HashSet<int> entityIds, HashSet<(int Cause, int Effect)> links)
     {
@@ -147,9 +170,9 @@ public static class TreeSerializer
         return new Reservation(new ReservationId(r.Id), target, r.Category, r.State, r.Note);
     }
 
-    private sealed record FileDto(int Version, string Name, EntityDto[] Entities, LinkDto[] Links, JunctionDto[] Junctions, ReservationDto[] Reservations, int NextId, int NextJunctionId, int NextReservationId, NudgeDto[]? Nudges = null, string? Scope = null);
+    private sealed record FileDto(int Version, string Name, EntityDto[] Entities, LinkDto[] Links, JunctionDto[] Junctions, ReservationDto[] Reservations, int NextId, int NextJunctionId, int NextReservationId, int NextCode, NudgeDto[]? Nudges = null, string? Scope = null);
     private sealed record NudgeDto(int Entity, double X, double Y);
-    private sealed record EntityDto(int Id, string Statement, EntityTag Tag);
+    private sealed record EntityDto(int Id, string Code, string Statement, EntityTag Tag);
     private sealed record LinkDto(int Cause, int Effect);
     private sealed record JunctionDto(int Id, int Effect, int[] Causes);
     private sealed record ReservationDto(int Id, string TargetKind, int A, int B, ClrCategory Category, ReservationState State, string Note);

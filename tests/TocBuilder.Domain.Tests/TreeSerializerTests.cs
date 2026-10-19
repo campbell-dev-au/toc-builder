@@ -90,7 +90,7 @@ public class TreeSerializerTests
         var json = TreeSerializer.Export("Any", new Tree());
 
         using var doc = System.Text.Json.JsonDocument.Parse(json);
-        Assert.Equal(1, doc.RootElement.GetProperty("version").GetInt32());
+        Assert.Equal(2, doc.RootElement.GetProperty("version").GetInt32());
     }
 
     [Fact]
@@ -109,14 +109,14 @@ public class TreeSerializerTests
     [Fact]
     public void A_file_from_a_newer_version_is_refused_with_a_message_naming_the_versions()
     {
-        var json = TreeSerializer.Export("T", RichTree()).Replace("\"version\": 1", "\"version\": 99");
+        var json = TreeSerializer.Export("T", RichTree()).Replace($"\"version\": {TreeSerializer.CurrentVersion}", "\"version\": 99");
 
         var result = TreeSerializer.Import(json);
 
         Assert.Equal(ImportOutcome.NewerVersion, result.Outcome);
         Assert.Null(result.Tree);
         Assert.Contains("99", result.Message);
-        Assert.Contains("1", result.Message);
+        Assert.Contains(TreeSerializer.CurrentVersion.ToString(), result.Message);
     }
 
     [Theory]

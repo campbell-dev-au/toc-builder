@@ -12,7 +12,7 @@ public class EditingTests
         tree.EditStatement(cause.Id, "Orders wait in a queue at the bottleneck");
 
         Assert.Equal(
-            [effect, new Entity(cause.Id, "Orders wait in a queue at the bottleneck")],
+            [effect, new Entity(cause.Id, cause.Code, "Orders wait in a queue at the bottleneck")],
             tree.Entities);
         Assert.Equal([new CausalLink(cause.Id, effect.Id)], tree.Links);
     }
