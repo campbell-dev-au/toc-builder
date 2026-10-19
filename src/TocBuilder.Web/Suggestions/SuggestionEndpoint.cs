@@ -28,7 +28,7 @@ public static class SuggestionEndpoint
             IReadOnlyList<Suggestion> candidates;
             try { candidates = await model.SuggestAsync(asked, cancellationToken); }
             catch (ModelUnavailableException e) { return Results.Problem(e.Message, statusCode: StatusCodes.Status503ServiceUnavailable); }
-            catch (Exception e) when (e is HttpRequestException or FormatException or System.Text.Json.JsonException)
+            catch (Exception e) when (e is HttpRequestException or FormatException or InvalidOperationException or System.Text.Json.JsonException || (e is OperationCanceledException && !cancellationToken.IsCancellationRequested))
             {
                 log.LogWarning(e, "The model call failed.");
                 return Results.Problem("The model could not be reached or gave an unusable answer.", statusCode: StatusCodes.Status502BadGateway);

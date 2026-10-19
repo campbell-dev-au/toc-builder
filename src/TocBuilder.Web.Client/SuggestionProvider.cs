@@ -17,7 +17,7 @@ public sealed class HttpSuggestionProvider(HttpClient http) : ISuggestionProvide
         if (!response.IsSuccessStatusCode)
             throw new HttpRequestException(response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable
                 ? "Suggestions are not set up on this server."
-                : $"The server answered {(int)response.StatusCode}.");
+                : $"The server answered {(int)response.StatusCode}: {(await response.Content.ReadAsStringAsync()).Trim('"')}");
         return await response.Content.ReadFromJsonAsync<Suggestion[]>() ?? [];
     }
 }
