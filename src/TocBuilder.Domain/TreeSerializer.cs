@@ -30,7 +30,7 @@ public static class TreeSerializer
         var file = new FileDto(
             CurrentVersion,
             name,
-            [.. tree.Entities.Select(e => new EntityDto(e.Id.Value, e.Code, e.Statement, e.Tag))],
+            [.. tree.Entities.Select(e => new EntityDto(e.Id.Value, e.Code, e.Statement, e.Tag, e.Summary))],
             [.. tree.Links.Select(l => new LinkDto(l.Cause.Value, l.Effect.Value))],
             [.. tree.Junctions.Select(j => new JunctionDto(j.Id.Value, j.Effect.Value, [.. j.Causes.Select(c => c.Value)]))],
             [.. tree.Reservations.Select(ToDto)],
@@ -84,7 +84,7 @@ public static class TreeSerializer
     private static ImportResult Build(FileDto file)
     {
         if (string.IsNullOrWhiteSpace(file.Name) || file.Entities is null || file.Links is null || file.Junctions is null || file.Reservations is null
-            || file.Entities.Any(e => e is null || e.Statement is null || !Enum.IsDefined(e.Tag) || CodeNumber(e.Code) is null)
+            || file.Entities.Any(e => e is null || e.Statement is null || !Enum.IsDefined(e.Tag) || CodeNumber(e.Code) is null || e.Summary?.Trim().Length > Tree.MaxSummaryLength)
             || file.Links.Any(l => l is null)
             || file.Junctions.Any(j => j is null || j.Causes is null)
             || (file.Nudges is not null && file.Nudges.Any(n => n is null))
@@ -117,7 +117,7 @@ public static class TreeSerializer
         if (!consistent) return Corrupt("This file's entities, links, junctions and reservations do not agree with each other.");
 
         var tree = Tree.FromState(
-            file.Entities.Select(e => new Entity(new EntityId(e.Id), e.Code, e.Statement, e.Tag)),
+            file.Entities.Select(e => new Entity(new EntityId(e.Id), e.Code, e.Statement, e.Tag, string.IsNullOrWhiteSpace(e.Summary) ? null : e.Summary.Trim())),
             file.Links.Select(l => new CausalLink(new EntityId(l.Cause), new EntityId(l.Effect))),
             file.Junctions.Select(j => new AndJunction(new JunctionId(j.Id), new EntityId(j.Effect), [.. j.Causes.Select(c => new EntityId(c))])),
             file.Reservations.Select(FromDto),
@@ -172,7 +172,7 @@ public static class TreeSerializer
 
     private sealed record FileDto(int Version, string Name, EntityDto[] Entities, LinkDto[] Links, JunctionDto[] Junctions, ReservationDto[] Reservations, int NextId, int NextJunctionId, int NextReservationId, int NextCode, NudgeDto[]? Nudges = null, string? Scope = null);
     private sealed record NudgeDto(int Entity, double X, double Y);
-    private sealed record EntityDto(int Id, string Code, string Statement, EntityTag Tag);
+    private sealed record EntityDto(int Id, string Code, string Statement, EntityTag Tag, string? Summary = null);
     private sealed record LinkDto(int Cause, int Effect);
     private sealed record JunctionDto(int Id, int Effect, int[] Causes);
     private sealed record ReservationDto(int Id, string TargetKind, int A, int B, ClrCategory Category, ReservationState State, string Note);

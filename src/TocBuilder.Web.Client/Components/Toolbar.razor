@@ -21,6 +21,7 @@
     @if (SelectedEntity is { } current)
     {
         <input class="edit" @key="(EditRevision, 0)" value="@current.Statement" @onchange="OnEditSelected" size="40" aria-label="Selected entity statement" />
+        <input class="edit" @key="(EditRevision, 2)" value="@current.Summary" @onchange="OnSummarySelected" maxlength="@Tree.MaxSummaryLength" size="24" placeholder="Summary (optional)" aria-label="Selected entity summary" />
         <select @key="(EditRevision, 1)" value="@current.Tag" @onchange="OnTagSelected" aria-label="Selected entity tag">
             <option value="@EntityTag.None">No tag</option>
             <option value="@EntityTag.Ude">UDE</option>
@@ -81,6 +82,7 @@
     [Parameter] public EventCallback<JunctionMode> OnStartJunctionMode { get; set; }
     [Parameter] public EventCallback OnUngroup { get; set; }
     [Parameter] public EventCallback<ChangeEventArgs> OnEditSelected { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnSummarySelected { get; set; }
     [Parameter] public EventCallback<ChangeEventArgs> OnTagSelected { get; set; }
     [Parameter] public EventCallback<SuggestionKind> OnSuggest { get; set; }
     [Parameter] public EventCallback OnAcceptGhost { get; set; }

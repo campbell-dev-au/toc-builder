@@ -35,16 +35,27 @@ public static class TreeSvg
         foreach (var entity in tree.Entities)
         {
             var (x, y) = placement.Positions[entity.Id];
+            svg.Append($"<g><title>{SecurityElement.Escape(entity.Statement)}</title>");
             svg.Append($"<rect x=\"{Num(x)}\" y=\"{Num(y)}\" width=\"{Num(TreeLayout.EntityWidth)}\" height=\"{Num(TreeLayout.EntityHeight)}\" rx=\"6\" fill=\"#f4f6fa\" stroke=\"#888\" stroke-width=\"1.2\" />");
             if (entity.Tag != EntityTag.None)
                 svg.Append($"<text x=\"{Num(x + 6)}\" y=\"{Num(y - 4)}\" font-size=\"11\" font-weight=\"bold\" font-family=\"sans-serif\" fill=\"{(entity.Tag == EntityTag.Ude ? "#b71c1c" : "#1b5e20")}\">{TagLabel(entity.Tag)}</text>");
-            svg.Append($"<text x=\"{Num(x + TreeLayout.EntityWidth / 2)}\" y=\"{Num(y + TreeLayout.EntityHeight / 2 + 4)}\" text-anchor=\"middle\" font-size=\"12\" font-family=\"sans-serif\">{SecurityElement.Escape(TruncateForDisplay(entity.Statement))}</text>");
+            svg.Append($"<text x=\"{Num(x + TreeLayout.EntityWidth / 2)}\" y=\"{Num(y + TreeLayout.EntityHeight / 2 + 4)}\" text-anchor=\"middle\" font-size=\"12\" font-family=\"sans-serif\">{SecurityElement.Escape(TruncateForDisplay(entity.Summary ?? entity.Statement))}</text></g>");
         }
         svg.Append("</svg>");
         return svg.ToString();
     }
 
     public static string TagLabel(EntityTag tag) => tag switch { EntityTag.Ude => "UDE", EntityTag.CoreProblem => "CORE PROBLEM", _ => "" };
+
+    /// <summary>What an Entity shows on the canvas, on one or two lines: its Summary, or its Code and the opening words of its statement when it has none.</summary>
+    public static IReadOnlyList<string> DisplayLines(Entity entity)
+    {
+        var text = entity.Summary ?? $"{entity.Code} {entity.Statement}";
+        if (text.Length <= MaxDisplayedStatement) return [text];
+        var cut = text.LastIndexOf(' ', MaxDisplayedStatement);
+        if (cut <= 0) cut = MaxDisplayedStatement;
+        return [text[..cut], TruncateForDisplay(text[cut..].TrimStart())];
+    }
 
     public static string TruncateForDisplay(string text) =>
         text.Length > MaxDisplayedStatement ? text[..(MaxDisplayedStatement - 1)] + "…" : text;

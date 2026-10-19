@@ -24,7 +24,7 @@
              Message="@message" MessageIsError="messageIsError" EditRevision="editRevision"
              OnUndo="Undo" OnRedo="Redo" OnAddCause="AddCause" OnAddEffect="AddEffect" OnToggleLinking="ToggleLinking"
              OnStartGrouping="StartGrouping" OnApplyGrouping="ApplyGrouping" OnDelete="DeleteSelected"
-             OnStartJunctionMode="StartJunctionMode" OnUngroup="Ungroup" OnEditSelected="EditSelected" OnTagSelected="TagSelected"
+             OnStartJunctionMode="StartJunctionMode" OnUngroup="Ungroup" OnEditSelected="EditSelected" OnSummarySelected="SummarySelected" OnTagSelected="TagSelected"
              OnSuggest="Suggest" OnAcceptGhost="AcceptGhost" OnDismissGhost="DismissGhost"
              OnZoom="ZoomBy" OnFit="Fit" OnRerunLayout="RerunLayout" />
 
@@ -315,6 +315,23 @@
             return;
         }
         tree.EditStatement(id, text);
+        Refresh();
+    }
+
+    private void SummarySelected(ChangeEventArgs e)
+    {
+        if (selected is not { } id) return;
+        Begin();
+        try
+        {
+            tree.SetSummary(id, e.Value?.ToString() ?? "");
+        }
+        catch (ArgumentException)
+        {
+            Report($"A summary can be at most {Tree.MaxSummaryLength} characters; the previous one was kept.", isError: true);
+            editRevision++;
+            return;
+        }
         Refresh();
     }
 
