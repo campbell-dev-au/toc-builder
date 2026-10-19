@@ -89,7 +89,7 @@ public sealed class SuggestionSet
             SuggestionKind.Effect => tree.CheckLink(_entity!.Value, existingId) == LinkOutcome.Linked,
             _ => tree.CheckAddToJunction(_junction!.Value, existingId) == JunctionOutcome.Done,
         };
-        return feasible ? suggestion with { Statement = existing.Statement } : null;
+        return feasible ? suggestion with { Statement = existing.Statement, Summary = TidySummary(suggestion.Summary) } : null;
     }
 
     /// <summary>The Summary as an Entity may carry it: trimmed, cut to the longest allowed, and null when blank.</summary>

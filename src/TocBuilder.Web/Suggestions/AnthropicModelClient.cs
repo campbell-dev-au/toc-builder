@@ -8,11 +8,11 @@ namespace TocBuilder.Web.Suggestions;
 /// <summary>Asks Claude for candidates. The API key is read from configuration (<c>Anthropic:ApiKey</c>) and never leaves the server.</summary>
 public sealed class AnthropicModelClient(HttpClient http, IConfiguration configuration) : IModelClient
 {
-    private const string System =
+    private static readonly string System =
         "You help build a Theory of Constraints Current Reality Tree. Each statement is a single, specific, observable condition. " +
         "An arrow runs from a cause to its effect, and a cause must be sufficient for the effect (or jointly sufficient with the other causes in an AND-junction). " +
         "Reply with only a JSON array of 3 to 5 objects shaped {\"statement\": string, \"summary\": string, \"existing\": number or null}. " +
-        "Make \"summary\" a short phrase of at most 40 characters that names the statement, such as \"ultra-processed food intake\". " +
+        $"Make \"summary\" a short phrase of at most {Tree.MaxSummaryLength} characters that names the statement, such as \"ultra-processed food intake\". " +
         "Set \"existing\" to the id of an Entity already in the tree when that Entity is the candidate, instead of repeating it as a new statement; otherwise null.";
 
     public async Task<IReadOnlyList<Suggestion>> SuggestAsync(ModelRequest request, CancellationToken cancellationToken)

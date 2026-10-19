@@ -103,6 +103,21 @@ public class SuggestionEndpointTests
     }
 
     [Fact]
+    public async Task A_candidate_that_names_an_existing_entity_has_its_summary_tidied_too()
+    {
+        var tree = new Tree();
+        var late = tree.AddEntity("Late deliveries");
+        var overload = tree.AddEntity("Machines are overloaded");
+        var model = new FakeModelClient(new Suggestion(SuggestionKind.Cause, "", overload.Id, new string('x', 60)));
+        using var client = ClientWith(model, out var factory);
+        using var _ = factory;
+
+        var response = await client.PostAsJsonAsync("/api/suggestions", new SuggestionApiRequest(Json(tree), SuggestionKind.Cause, late.Id, null));
+
+        Assert.Equal([new Suggestion(SuggestionKind.Cause, "Machines are overloaded", overload.Id, new string('x', 40))], await response.Content.ReadFromJsonAsync<Suggestion[]>());
+    }
+
+    [Fact]
     public async Task Missing_co_causes_are_requested_for_an_AND_junction()
     {
         var tree = new Tree();
