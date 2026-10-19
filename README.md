@@ -12,6 +12,14 @@ dotnet run --project src/TocBuilder.Web --launch-profile http
 
 Then open <http://localhost:5006>. Trees are saved in your browser's localStorage, so there is nothing else to set up.
 
+To use Suggestions, give the server an Anthropic API key. The key stays on the server and is never sent to the browser:
+
+```sh
+dotnet user-secrets set "Anthropic:ApiKey" "<your key>" --project src/TocBuilder.Web
+```
+
+`Anthropic:Model` optionally overrides the model (default `claude-sonnet-5-5`). Without a key the editor still works and Suggestions report that they are not set up. The server stores no trees: each request carries the tree.
+
 Run the tests with `dotnet test`.
 
 ## Agent skills

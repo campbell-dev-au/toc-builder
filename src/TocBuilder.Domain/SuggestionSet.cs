@@ -1,5 +1,8 @@
+using System.Text.Json.Serialization;
+
 namespace TocBuilder.Domain;
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum SuggestionKind { Cause, Effect, CoCause }
 
 /// <summary>A candidate for the tree. It is not part of any tree until the user accepts it. <paramref name="Existing"/> names an Entity already in the tree to link instead of adding a new one.</summary>

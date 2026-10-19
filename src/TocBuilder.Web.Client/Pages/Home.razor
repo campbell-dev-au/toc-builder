@@ -32,7 +32,7 @@
     </div>
 
     <div class="scope">
-        <label>Scope <input @key="(editRevision, 3)" value="@tree.Scope" @onchange="EditScope" size="80" placeholder="The problem domain, sent with each request for suggestions" aria-label="Scope" /></label>
+        <label>Scope <input @ref="scopeInput" @key="(editRevision, 3)" value="@tree.Scope" @onchange="EditScope" size="80" placeholder="The problem domain, sent with each request for suggestions" aria-label="Scope" /></label>
     </div>
 
     <form class="add" @onsubmit="AddEntity">
@@ -237,6 +237,8 @@
     private Suggestion? selectedGhost;
     private string ghostEdit = "";
     private bool suggesting;
+    private bool scopePrompted;   // the user is asked for a Scope the first time they request Suggestions without one
+    private ElementReference scopeInput;
     private EntityId? selected;
     private bool linking;
     private enum JunctionMode { None, Grouping, Adding, Removing }
@@ -581,9 +583,16 @@
         }
         else if (selected is { } entity) anchor = entity;
         else return;
+        if (tree.Scope.Length == 0 && !scopePrompted)
+        {
+            scopePrompted = true;
+            Report("Suggestions work best with a Scope. Write one, then ask again, or ask again to continue without.");
+            await scopeInput.FocusAsync();
+            return;
+        }
         var asked = tree;
         var askedJunction = selectedJunction;
-        var request = new SuggestionRequest(tree.Scope, kind, StatementOf(anchor), tree.Entities);
+        var request = new SuggestionApiRequest(TreeSerializer.Export("tree", tree), kind, kind == SuggestionKind.CoCause ? null : anchor, kind == SuggestionKind.CoCause ? askedJunction : null);
         suggesting = true;
         IReadOnlyList<Suggestion> candidates;
         try { candidates = await Provider.SuggestAsync(request); }
