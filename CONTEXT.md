@@ -22,6 +22,14 @@ _Avoid_: Problem tree
 A single statement in a tree: a cause, an effect, or both.
 _Avoid_: Node, box, item
 
+**Summary**:
+A short phrase that names an Entity's statement, such as "ultra-processed food intake", shown in place of the full statement where space is tight. It arrives with an accepted Suggestion or is written by the user, and is optional.
+_Avoid_: Label, title, shorthand
+
+**Code**:
+A short sequential identifier for an Entity, such as E1, E2, unique within a tree and never reused. It identifies an Entity without describing it.
+_Avoid_: ID, number, name
+
 **Causal link**:
 A claimed sufficiency relationship from one or more causes to an effect.
 _Avoid_: Edge, arrow, connection
@@ -49,14 +57,18 @@ _Avoid_: Description, prompt, context
 ### AI assistance
 
 **Suggestion**:
-A candidate Entity proposed by the AI only when the user explicitly requests it (a cause, an effect, or a missing co-cause for an AND-junction) and attached to the selected Entity. It is part of the tree only once the user accepts it.
+A candidate Entity proposed by the AI only when the user explicitly requests it (a cause, an effect, or a missing co-cause for an AND-junction) and attached to the selected Entity. It carries a proposed Summary alongside its statement. It is part of the tree only once the user accepts it.
 _Avoid_: Recommendation, draft entity, AI node
+
+**Suggestion review**:
+The step where the user goes through the pending Suggestions for one Entity (or AND-junction), accepting or dismissing each, and can continue outward from an accepted one. Suggestions the user has not accepted or dismissed are discarded only after confirmation.
+_Avoid_: Ghost, suggestion window, popup
 
 ### Logic checking
 
-**Tree summary**:
+**Tree report**:
 A derived view of a tree's state: UDEs with no path to a Core problem, Core problems that explain no UDE, unconnected Entities, Root causes, and open Reservations. It only reports and never blocks.
-_Avoid_: Validation panel, errors
+_Avoid_: Tree summary, validation panel, errors
 
 **Categories of Legitimate Reservation (CLR)**:
 The standard set of challenges (clarity, entity existence, causality existence, cause insufficiency and so on) used to test whether a Causal link or Entity holds.
