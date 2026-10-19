@@ -13,7 +13,7 @@ public static class ReservationText
         _ => throw new InvalidOperationException($"Unhandled reservation target {target.GetType().Name}.")
     };
 
-    private static string StatementOf(Tree tree, EntityId id) => tree.Entities.First(e => e.Id == id).Statement;
+    private static string StatementOf(Tree tree, EntityId id) => EntityText.Label(tree.Entities.First(e => e.Id == id));
 
     private static string DescribeJunction(Tree tree, AndJunction junction) =>
         $"AND of {string.Join(" + ", junction.Causes.Select(id => StatementOf(tree, id)))} → {StatementOf(tree, junction.Effect)}";

@@ -8,25 +8,17 @@
 <PageTitle>TOC Builder</PageTitle>
 
 <div class="editor">
-    <LibraryBar Trees="trees" CurrentId="@currentId" TreeName="@treeName" EditRevision="editRevision"
-                @bind-ConfirmingDelete="confirmingDelete" HasEntities="@(tree.Entities.Count > 0)"
-                OnOpen="OpenTree" OnRename="RenameTree" OnNew="NewTree" OnDelete="DeleteTree" OnExportJson="ExportTree"
-                OnExportImage="ExportImage" OnImport="ImportTree" />
+    <GlobalBar Trees="trees" CurrentId="@currentId" TreeName="@treeName" EditRevision="editRevision"
+               @bind-ConfirmingDelete="confirmingDelete" HasEntities="@(tree.Entities.Count > 0)" CanUndo="tree.CanUndo" CanRedo="tree.CanRedo"
+               ZoomPercent="@((int)Math.Round(viewport.Scale * 100))" CanRerunLayout="@(nudges.Count > 0)"
+               Message="@message" MessageIsError="messageIsError"
+               OnOpen="OpenTree" OnRename="RenameTree" OnNew="NewTree" OnDelete="DeleteTree" OnUndo="Undo" OnRedo="Redo"
+               OnExportJson="ExportTree" OnExportImage="ExportImage" OnImport="ImportTree"
+               OnZoom="ZoomBy" OnFit="Fit" OnRerunLayout="RerunLayout" />
 
     <ScopeBar @ref="scopeBar" Scope="@tree.Scope" EditRevision="editRevision" OnEdit="EditScope" />
 
     <AddEntityForm @bind-Statement="statement" OnSubmit="AddEntity" />
-
-    <Toolbar CanUndo="tree.CanUndo" CanRedo="tree.CanRedo" HasSelection="@(selected is not null)" HasJunction="@(selectedJunction is not null)"
-             SelectedEntity="SelectedEntity" Linking="linking" JunctionMode="junctionMode" GroupMemberCount="groupMembers.Count"
-             Suggesting="suggesting" SelectedGhost="selectedGhost" @bind-GhostEdit="ghostEdit"
-             ZoomPercent="@((int)Math.Round(viewport.Scale * 100))" CanRerunLayout="@(nudges.Count > 0)"
-             Message="@message" MessageIsError="messageIsError" EditRevision="editRevision"
-             OnUndo="Undo" OnRedo="Redo" OnAddCause="AddCause" OnAddEffect="AddEffect" OnToggleLinking="ToggleLinking"
-             OnStartGrouping="StartGrouping" OnApplyGrouping="ApplyGrouping" OnDelete="DeleteSelected"
-             OnStartJunctionMode="StartJunctionMode" OnUngroup="Ungroup" OnEditSelected="EditSelected" OnSummarySelected="SummarySelected" OnTagSelected="TagSelected"
-             OnSuggest="Suggest" OnAcceptGhost="AcceptGhost" OnDismissGhost="DismissGhost"
-             OnZoom="ZoomBy" OnFit="Fit" OnRerunLayout="RerunLayout" />
 
     <div class="workspace">
     <EditorCanvas @ref="canvas" Tree="tree" Placement="placement" Viewport="viewport" Selected="selected" SelectedJunction="selectedJunction"
@@ -36,13 +28,16 @@
                   OnStartPan="StartPan" OnStartEntityDrag="@(drag => StartEntityDrag(drag.Id, drag.Args))" OnDeselect="Deselect" OnSelectEntity="Select"
                   OnSelectLink="SelectLink" OnSelectJunction="SelectJunction" OnSelectGhost="SelectGhost" />
 
-    <aside class="report" aria-label="Tree report">
-        <h2>Tree report</h2>
-        <TreeReport Tree="tree" Report="report" OnSelectEntity="Select" OnSelectTarget="SelectTarget" />
-        <ReservationPanel Tree="tree" Target="CurrentTarget" EditRevision="editRevision"
-                          OnRaise="@(raised => Raise(raised.Target, raised.Category))"
-                          OnChangeState="@(change => ChangeReservationState(change.Id, change.Args))" OnChangeNote="@(change => ChangeReservationNote(change.Id, change.Args))" />
-    </aside>
+    <ContextPanel Tree="tree" Report="report" Target="CurrentTarget" SelectedEntity="SelectedEntity" HasJunction="@(selectedJunction is not null)"
+                  Linking="linking" JunctionMode="junctionMode" GroupMemberCount="groupMembers.Count" Suggesting="suggesting"
+                  SelectedGhost="selectedGhost" @bind-GhostEdit="ghostEdit" EditRevision="editRevision"
+                  OnAddCause="AddCause" OnAddEffect="AddEffect" OnToggleLinking="ToggleLinking" OnStartGrouping="StartGrouping"
+                  OnApplyGrouping="ApplyGrouping" OnDelete="DeleteSelected" OnStartJunctionMode="StartJunctionMode" OnUngroup="Ungroup"
+                  OnEditSelected="EditSelected" OnSummarySelected="SummarySelected" OnTagSelected="TagSelected"
+                  OnSuggest="Suggest" OnAcceptGhost="AcceptGhost" OnDismissGhost="DismissGhost"
+                  OnRaise="@(raised => Raise(raised.Target, raised.Category))"
+                  OnChangeState="@(change => ChangeReservationState(change.Id, change.Args))" OnChangeNote="@(change => ChangeReservationNote(change.Id, change.Args))"
+                  OnSelectEntity="Select" OnSelectTarget="SelectTarget" />
     </div>
 </div>
 
