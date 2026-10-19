@@ -29,19 +29,19 @@ public class SuggestionTests
     }
 
     [Fact]
-    public void Creating_a_set_changes_nothing_in_the_tree_its_summary_or_its_JSON()
+    public void Creating_a_set_changes_nothing_in_the_tree_its_report_or_its_JSON()
     {
         var tree = new Tree();
         var late = tree.AddEntity("Late deliveries");
         var jsonBefore = TreeSerializer.Export("T", tree);
-        var summaryBefore = tree.Summarise();
+        var reportBefore = tree.Report();
 
         _ = SuggestionSet.ForEntity(tree, late.Id, [Cause("Machines are overloaded")]);
 
         Assert.Equal([late], tree.Entities);
         Assert.Empty(tree.Links);
         Assert.Equal(jsonBefore, TreeSerializer.Export("T", tree));
-        Assert.Equal(summaryBefore.UnconnectedEntities, tree.Summarise().UnconnectedEntities);
+        Assert.Equal(reportBefore.UnconnectedEntities, tree.Report().UnconnectedEntities);
     }
 
     [Fact]

@@ -13,7 +13,7 @@ public sealed record Entity(EntityId Id, string Statement, EntityTag Tag = Entit
 /// <param name="UnconnectedEntities">Entities with no Causal link at all.</param>
 /// <param name="RootCauses">Entities with no cause beneath them but at least one effect above.</param>
 /// <param name="OpenReservations">Reservations still open, in the order they were raised. Resolved and dismissed ones are left out.</param>
-public sealed record TreeSummary(
+public sealed record TreeReport(
     IReadOnlyList<Entity> UdesWithoutCoreProblem,
     IReadOnlyList<Entity> CoreProblemsExplainingNoUde,
     IReadOnlyList<Entity> UnconnectedEntities,
@@ -190,12 +190,12 @@ public sealed class Tree
         _entities[index] = _entities[index] with { Tag = tag };
     }
 
-    public TreeSummary Summarise()
+    public TreeReport Report()
     {
         var udes = _entities.Where(e => e.Tag == EntityTag.Ude).ToList();
         var cores = _entities.Where(e => e.Tag == EntityTag.CoreProblem).ToList();
         var reached = cores.ToDictionary(c => c.Id, c => ReachableFrom(c.Id));
-        return new TreeSummary(
+        return new TreeReport(
             udes.Where(u => !cores.Any(c => reached[c.Id].Contains(u.Id))).ToList(),
             cores.Where(c => !udes.Any(u => reached[c.Id].Contains(u.Id))).ToList(),
             _entities.Where(e => !_links.Any(l => l.Cause == e.Id || l.Effect == e.Id)).ToList(),

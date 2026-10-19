@@ -215,20 +215,20 @@ public class ReservationTests
     }
 
     [Fact]
-    public void Only_open_reservations_appear_in_the_tree_summary()
+    public void Only_open_reservations_appear_in_the_tree_report()
     {
         var (tree, effect, a, b) = TreeWithTwoCauses();
-        Assert.Empty(tree.Summarise().OpenReservations);
+        Assert.Empty(tree.Report().OpenReservations);
         var open = tree.RaiseReservation(new OnLink(new CausalLink(a.Id, effect.Id)), ClrCategory.CausalityExistence).Reservation!;
         var resolved = tree.RaiseReservation(new OnEntity(b.Id), ClrCategory.Clarity).Reservation!;
         var dismissed = tree.RaiseReservation(new OnEntity(effect.Id), ClrCategory.Tautology).Reservation!;
         tree.SetReservationState(resolved.Id, ReservationState.Resolved);
         tree.SetReservationState(dismissed.Id, ReservationState.Dismissed);
 
-        Assert.Equal([open], tree.Summarise().OpenReservations);
+        Assert.Equal([open], tree.Report().OpenReservations);
 
         tree.SetReservationState(resolved.Id, ReservationState.Open);
-        Assert.Equal([open.Id, resolved.Id], tree.Summarise().OpenReservations.Select(r => r.Id));
+        Assert.Equal([open.Id, resolved.Id], tree.Report().OpenReservations.Select(r => r.Id));
     }
 
     [Fact]
