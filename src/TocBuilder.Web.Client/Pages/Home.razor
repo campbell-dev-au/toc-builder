@@ -581,6 +581,8 @@
         }
         else if (selected is { } entity) anchor = entity;
         else return;
+        var asked = tree;
+        var askedJunction = selectedJunction;
         var request = new SuggestionRequest(tree.Scope, kind, StatementOf(anchor), tree.Entities);
         suggesting = true;
         IReadOnlyList<Suggestion> candidates;
@@ -591,8 +593,8 @@
             return;
         }
         finally { suggesting = false; }
-        if (tree.Entities.All(e => e.Id != anchor)) return;   // deleted while waiting
-        var set = kind == SuggestionKind.CoCause && selectedJunction is { } junction
+        if (!ReferenceEquals(asked, tree) || tree.Entities.All(e => e.Id != anchor)) return;   // another tree was opened, or the Entity deleted, while waiting
+        var set = kind == SuggestionKind.CoCause && askedJunction is { } junction
             ? SuggestionSet.ForJunction(tree, junction, candidates)
             : SuggestionSet.ForEntity(tree, anchor, candidates);
         ClearSuggestions();

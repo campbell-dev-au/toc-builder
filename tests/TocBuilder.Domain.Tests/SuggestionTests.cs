@@ -267,4 +267,18 @@ public class SuggestionTests
         Assert.Equal(AcceptOutcome.NoLongerValid, set.Accept(tree, set.Pending[0]));
         Assert.DoesNotContain(tree.Entities, e => e.Statement == "Rush orders");
     }
+
+    [Fact]
+    public void A_suggestion_that_has_become_a_duplicate_since_it_was_made_is_dropped_on_accept()
+    {
+        var tree = new Tree();
+        var late = tree.AddEntity("Late deliveries");
+        var set = SuggestionSet.ForEntity(tree, late.Id, [Cause("Machines are overloaded")]);
+        tree.AddEntity("machines are overloaded");
+
+        Assert.Equal(AcceptOutcome.NoLongerValid, set.Accept(tree, Cause("Machines are overloaded")));
+
+        Assert.Equal(2, tree.Entities.Count);
+        Assert.Empty(set.Pending);
+    }
 }

@@ -62,24 +62,23 @@ public sealed class SuggestionSet
 
     private List<Suggestion> Valid(Tree tree, IEnumerable<Suggestion> candidates)
     {
-        var taken = tree.Entities.Select(e => Normalise(e.Statement)).ToHashSet();
+        var worded = new HashSet<string>();   // new statements already kept, so a repeat within the batch is dropped
         var valid = new List<Suggestion>();
         foreach (var candidate in candidates)
         {
-            var checkedCandidate = candidate.Existing is not null
-                ? Check(tree, candidate)
-                : !string.IsNullOrWhiteSpace(candidate.Statement) && taken.Add(Normalise(candidate.Statement)) ? candidate : null;
-            if (checkedCandidate is not null && !valid.Contains(checkedCandidate)) valid.Add(checkedCandidate);
+            if (Check(tree, candidate) is not { } keep) continue;
+            if (keep.Existing is null ? worded.Add(Normalise(keep.Statement)) : !valid.Contains(keep)) valid.Add(keep);
         }
         return valid;
     }
 
-    /// <summary>The suggestion as it would enter the tree now, or null when its target has gone or the entity it names is missing or could not be linked. A suggestion that names an Entity is worded as that Entity.</summary>
+    /// <summary>The suggestion as it would enter the tree now, or null when its target has gone , it repeats an Entity already in the tree, or the Entity it names is missing or could not be linked. A suggestion that names an Entity is worded as that Entity.</summary>
     private Suggestion? Check(Tree tree, Suggestion suggestion)
     {
         var targetGone = _junction is { } junction ? tree.Junctions.All(j => j.Id != junction) : tree.Entities.All(e => e.Id != _entity);
         if (targetGone) return null;
-        if (suggestion.Existing is not { } existingId) return suggestion;
+        if (suggestion.Existing is not { } existingId)
+            return string.IsNullOrWhiteSpace(suggestion.Statement) || tree.Entities.Any(e => Normalise(e.Statement) == Normalise(suggestion.Statement)) ? null : suggestion;
         if (tree.Entities.FirstOrDefault(e => e.Id == existingId) is not { } existing) return null;
         var feasible = suggestion.Kind switch
         {
