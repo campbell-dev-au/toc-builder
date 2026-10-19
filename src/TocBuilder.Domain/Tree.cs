@@ -5,7 +5,8 @@ public readonly record struct EntityId(int Value);
 /// <summary>A working annotation the user puts on an Entity. It never restricts what can be linked or edited.</summary>
 public enum EntityTag { None, Ude, CoreProblem }
 
-public sealed record Entity(EntityId Id, string Statement, EntityTag Tag = EntityTag.None);
+/// <summary>An Entity's <paramref name="Code"/> (E1, E2...) comes from a per-tree counter that never goes down, so it is never reused and never changes.</summary>
+public sealed record Entity(EntityId Id, string Code, string Statement, EntityTag Tag = EntityTag.None);
 
 /// <summary>A derived report of what looks unfinished in a tree. It only reports and never blocks.</summary>
 /// <param name="UdesWithoutCoreProblem">UDEs that no Core problem reaches through Causal links.</param>
@@ -73,6 +74,8 @@ public sealed class Tree
     private readonly List<AndJunction> _junctions = [];
     private readonly List<Reservation> _reservations = [];
     private int _nextId = 1;
+    // Not part of Snapshot: undo must never wind this back, or a Code could be handed out twice.
+    private int _nextCode = 1;
     private int _nextJunctionId = 1;
     private int _nextReservationId = 1;
     private readonly Stack<Snapshot> _undo = new();
@@ -98,9 +101,9 @@ public sealed class Tree
     public IReadOnlyList<Reservation> Reservations => _reservations;
 
     /// <summary>Rebuilds a tree from saved state. The result has no undo history.</summary>
-    internal static Tree FromState(IEnumerable<Entity> entities, IEnumerable<CausalLink> links, IEnumerable<AndJunction> junctions, IEnumerable<Reservation> reservations, string scope, int nextId, int nextJunctionId, int nextReservationId)
+    internal static Tree FromState(IEnumerable<Entity> entities, IEnumerable<CausalLink> links, IEnumerable<AndJunction> junctions, IEnumerable<Reservation> reservations, string scope, int nextId, int nextCode, int nextJunctionId, int nextReservationId)
     {
-        var tree = new Tree { Scope = scope, _nextId = nextId, _nextJunctionId = nextJunctionId, _nextReservationId = nextReservationId };
+        var tree = new Tree { Scope = scope, _nextId = nextId, _nextCode = nextCode, _nextJunctionId = nextJunctionId, _nextReservationId = nextReservationId };
         tree._entities.AddRange(entities);
         tree._links.AddRange(links);
         tree._junctions.AddRange(junctions);
@@ -108,7 +111,7 @@ public sealed class Tree
         return tree;
     }
 
-    internal (int NextId, int NextJunctionId, int NextReservationId) NextIds => (_nextId, _nextJunctionId, _nextReservationId);
+    internal (int NextId, int NextCode, int NextJunctionId, int NextReservationId) NextIds => (_nextId, _nextCode, _nextJunctionId, _nextReservationId);
 
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
@@ -352,8 +355,9 @@ public sealed class Tree
 
     private Entity Add(string cleanStatement)
     {
-        var entity = new Entity(new EntityId(_nextId), cleanStatement);
+        var entity = new Entity(new EntityId(_nextId), $"E{_nextCode}", cleanStatement);
         _nextId++;
+        _nextCode++;
         _entities.Add(entity);
         return entity;
     }
