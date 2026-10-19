@@ -14,7 +14,7 @@
                     <path d="M0,0 L10,5 L0,10 z" fill="#555" />
                 </marker>
             </defs>
-            <g transform="translate(@Num(Viewport.PanX) @Num(Viewport.PanY)) scale(@Num(Viewport.Scale))">
+            <g transform="translate(@Num(Math.Round(Viewport.PanX)) @Num(Math.Round(Viewport.PanY))) scale(@Num(Viewport.Scale))">
             @foreach (var link in Tree.Links)
             {
                 var linkSelected = SelectedLink == link;
