@@ -6,7 +6,8 @@ public readonly record struct EntityId(int Value);
 public enum EntityTag { None, Ude, CoreProblem }
 
 /// <summary>An Entity's <paramref name="Code"/> (E1, E2...) comes from a per-tree counter that never goes down, so it is never reused and never changes.</summary>
-public sealed record Entity(EntityId Id, string Code, string Statement, EntityTag Tag = EntityTag.None);
+/// <remarks><paramref name="Summary"/> is a short phrase naming the statement, or null when there is none.</remarks>
+public sealed record Entity(EntityId Id, string Code, string Statement, EntityTag Tag = EntityTag.None, string? Summary = null);
 
 /// <summary>A derived report of what looks unfinished in a tree. It only reports and never blocks.</summary>
 /// <param name="UdesWithoutCoreProblem">UDEs that no Core problem reaches through Causal links.</param>
@@ -69,6 +70,8 @@ public sealed record ReservationResult(ReservationOutcome Outcome, Reservation? 
 
 public sealed class Tree
 {
+    public const int MaxSummaryLength = 40;
+
     private readonly List<Entity> _entities = [];
     private readonly List<CausalLink> _links = [];
     private readonly List<AndJunction> _junctions = [];
@@ -183,6 +186,19 @@ public sealed class Tree
         var clean = Clean(statement);
         RecordUndoStep();
         _entities[index] = _entities[index] with { Statement = clean };
+    }
+
+    /// <summary>Sets the Entity's Summary, trimmed. Blank means none.</summary>
+    public void SetSummary(EntityId id, string summary)
+    {
+        var index = IndexOf(id);
+        var clean = summary.Trim();
+        if (clean.Length > MaxSummaryLength)
+            throw new ArgumentException($"A summary cannot be longer than {MaxSummaryLength} characters.", nameof(summary));
+        var value = clean.Length == 0 ? null : clean;
+        if (_entities[index].Summary == value) return;
+        RecordUndoStep();
+        _entities[index] = _entities[index] with { Summary = value };
     }
 
     public void SetTag(EntityId id, EntityTag tag)
