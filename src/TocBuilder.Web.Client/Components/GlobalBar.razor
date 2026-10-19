@@ -1,0 +1,69 @@
+<div class="global-bar" role="toolbar" aria-label="Tree">
+    <select value="@CurrentId" @onchange="OnOpen" aria-label="Open tree">
+        @foreach (var saved in Trees)
+        {
+            <option value="@saved.Id">@saved.Name</option>
+        }
+    </select>
+    <input @key="(EditRevision, 2)" value="@TreeName" @onchange="OnRename" aria-label="Tree name" />
+    <button type="button" @onclick="OnNew">New tree</button>
+    @if (ConfirmingDelete)
+    {
+        <button type="button" @onclick="OnDelete">Confirm delete</button>
+        <button type="button" @onclick="() => ConfirmingDeleteChanged.InvokeAsync(false)">Cancel</button>
+    }
+    else
+    {
+        <button type="button" @onclick="() => ConfirmingDeleteChanged.InvokeAsync(true)">Delete tree</button>
+    }
+    <button type="button" @onclick="OnUndo" disabled="@(!CanUndo)">Undo (Ctrl+Z)</button>
+    <button type="button" @onclick="OnRedo" disabled="@(!CanRedo)">Redo (Ctrl+Shift+Z)</button>
+    <details class="menu">
+        <summary>Export / import</summary>
+        <div class="menu-items">
+            <button type="button" @onclick="OnExportJson">Export JSON</button>
+            <button type="button" @onclick="() => OnExportImage.InvokeAsync(false)" disabled="@(!HasEntities)">Export SVG</button>
+            <button type="button" @onclick="() => OnExportImage.InvokeAsync(true)" disabled="@(!HasEntities)">Export PNG</button>
+            <label class="import">Import JSON <InputFile OnChange="OnImport" accept=".json,application/json" /></label>
+        </div>
+    </details>
+    <span class="zoom" role="group" aria-label="Zoom">
+        <button type="button" @onclick="() => OnZoom.InvokeAsync(1 / ZoomStep)" aria-label="Zoom out">−</button>
+        <span class="level" aria-live="off">@ZoomPercent%</span>
+        <button type="button" @onclick="() => OnZoom.InvokeAsync(ZoomStep)" aria-label="Zoom in">+</button>
+        <button type="button" @onclick="OnFit">Fit</button>
+    </span>
+    <button type="button" @onclick="OnRerunLayout" disabled="@(!CanRerunLayout)">Re-run layout</button>
+    <span class="message @(MessageIsError ? "error" : "")" role="status">@Message</span>
+</div>
+
+@code {
+    private const double ZoomStep = 1.25;
+
+    [Parameter] public IReadOnlyList<SavedTree> Trees { get; set; } = [];
+    [Parameter] public string CurrentId { get; set; } = "";
+    [Parameter] public string TreeName { get; set; } = "";
+    [Parameter] public int EditRevision { get; set; }
+    [Parameter] public bool ConfirmingDelete { get; set; }
+    [Parameter] public EventCallback<bool> ConfirmingDeleteChanged { get; set; }
+    [Parameter] public bool HasEntities { get; set; }
+    [Parameter] public bool CanUndo { get; set; }
+    [Parameter] public bool CanRedo { get; set; }
+    [Parameter] public int ZoomPercent { get; set; }
+    [Parameter] public bool CanRerunLayout { get; set; }
+    [Parameter] public string Message { get; set; } = "";
+    [Parameter] public bool MessageIsError { get; set; }
+
+    [Parameter] public EventCallback<ChangeEventArgs> OnOpen { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnRename { get; set; }
+    [Parameter] public EventCallback OnNew { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public EventCallback OnUndo { get; set; }
+    [Parameter] public EventCallback OnRedo { get; set; }
+    [Parameter] public EventCallback OnExportJson { get; set; }
+    [Parameter] public EventCallback<bool> OnExportImage { get; set; }   // true for PNG, false for SVG
+    [Parameter] public EventCallback<InputFileChangeEventArgs> OnImport { get; set; }
+    [Parameter] public EventCallback<double> OnZoom { get; set; }   // the factor to zoom by
+    [Parameter] public EventCallback OnFit { get; set; }
+    [Parameter] public EventCallback OnRerunLayout { get; set; }
+}

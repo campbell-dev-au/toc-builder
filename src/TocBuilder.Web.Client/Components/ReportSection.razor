@@ -7,7 +7,7 @@
         <ul>
             @foreach (var entity in Entities)
             {
-                <li><button type="button" class="link" @onclick="() => OnSelect.InvokeAsync(entity.Id)">@entity.Statement</button></li>
+                <li><button type="button" class="link" @onclick="() => OnSelect.InvokeAsync(entity.Id)">@EntityText.Label(entity)</button></li>
             }
         </ul>
     }
