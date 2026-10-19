@@ -142,22 +142,22 @@ public sealed class Tree
         return Add(clean);
     }
 
-    public Entity AddCause(EntityId effect, string statement)
+    public Entity AddCause(EntityId effect, string statement, string? summary = null)
     {
         EnsureExists(effect);
         var clean = Clean(statement);
         RecordUndoStep();
-        var cause = Add(clean);
+        var cause = Add(clean, summary);
         _links.Add(new CausalLink(cause.Id, effect));
         return cause;
     }
 
-    public Entity AddEffect(EntityId cause, string statement)
+    public Entity AddEffect(EntityId cause, string statement, string? summary = null)
     {
         EnsureExists(cause);
         var clean = Clean(statement);
         RecordUndoStep();
-        var effect = Add(clean);
+        var effect = Add(clean, summary);
         _links.Add(new CausalLink(cause, effect.Id));
         return effect;
     }
@@ -297,12 +297,12 @@ public sealed class Tree
     }
 
     /// <summary>Adds a new Entity as a further cause of the junction's effect and as a member of the junction, in one undoable step.</summary>
-    public Entity AddCoCause(JunctionId junctionId, string statement)
+    public Entity AddCoCause(JunctionId junctionId, string statement, string? summary = null)
     {
         var junction = _junctions[JunctionIndex(junctionId)];
         var clean = Clean(statement);
         RecordUndoStep();
-        var cause = Add(clean);
+        var cause = Add(clean, summary);
         _links.Add(new CausalLink(cause.Id, junction.Effect));
         Replace(junction, [.. junction.Causes, cause.Id]);
         return cause;
@@ -392,9 +392,9 @@ public sealed class Tree
         return index;
     }
 
-    private Entity Add(string cleanStatement)
+    private Entity Add(string cleanStatement, string? summary = null)
     {
-        var entity = new Entity(new EntityId(_nextId), $"E{_nextCode}", cleanStatement);
+        var entity = new Entity(new EntityId(_nextId), $"E{_nextCode}", cleanStatement, Summary: summary);
         _nextId++;
         _nextCode++;
         _entities.Add(entity);

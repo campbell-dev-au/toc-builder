@@ -8,10 +8,11 @@ namespace TocBuilder.Web.Suggestions;
 /// <summary>Asks Claude for candidates. The API key is read from configuration (<c>Anthropic:ApiKey</c>) and never leaves the server.</summary>
 public sealed class AnthropicModelClient(HttpClient http, IConfiguration configuration) : IModelClient
 {
-    private const string System =
+    private static readonly string System =
         "You help build a Theory of Constraints Current Reality Tree. Each statement is a single, specific, observable condition. " +
         "An arrow runs from a cause to its effect, and a cause must be sufficient for the effect (or jointly sufficient with the other causes in an AND-junction). " +
-        "Reply with only a JSON array of 3 to 5 objects shaped {\"statement\": string, \"existing\": number or null}. " +
+        "Reply with only a JSON array of 3 to 5 objects shaped {\"statement\": string, \"summary\": string, \"existing\": number or null}. " +
+        $"Make \"summary\" a short phrase of at most {Tree.MaxSummaryLength} characters that names the statement, such as \"ultra-processed food intake\". " +
         "Set \"existing\" to the id of an Entity already in the tree when that Entity is the candidate, instead of repeating it as a new statement; otherwise null.";
 
     public async Task<IReadOnlyList<Suggestion>> SuggestAsync(ModelRequest request, CancellationToken cancellationToken)
@@ -22,7 +23,7 @@ public sealed class AnthropicModelClient(HttpClient http, IConfiguration configu
         var body = new JsonObject
         {
             ["model"] = configuration["Anthropic:Model"] ?? "claude-sonnet-5-5",
-            ["max_tokens"] = 1024,
+            ["max_tokens"] = 2048,
             ["system"] = System,
             ["messages"] = new JsonArray(new JsonObject { ["role"] = "user", ["content"] = Prompt(request) }),
         };
@@ -72,7 +73,8 @@ public sealed class AnthropicModelClient(HttpClient http, IConfiguration configu
         {
             if (item is not JsonObject o || o["statement"] is not JsonValue statement || !statement.TryGetValue<string>(out var s)) continue;
             int? existing = o["existing"] is JsonValue id && id.TryGetValue<int>(out var n) ? n : null;
-            suggestions.Add(new Suggestion(kind, s, existing is { } e ? new EntityId(e) : null));
+            var summary = o["summary"] is JsonValue sv && sv.TryGetValue<string>(out var proposed) ? proposed : null;
+            suggestions.Add(new Suggestion(kind, s, existing is { } e ? new EntityId(e) : null, summary));
         }
         return suggestions;
     }
