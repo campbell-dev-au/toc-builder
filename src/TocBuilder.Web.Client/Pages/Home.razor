@@ -25,6 +25,8 @@
             <button type="button" @onclick="() => confirmingDelete = true">Delete tree</button>
         }
         <button type="button" @onclick="ExportTree">Export JSON</button>
+        <button type="button" @onclick="() => ExportImage(png: false)" disabled="@(tree.Entities.Count == 0)">Export SVG</button>
+        <button type="button" @onclick="() => ExportImage(png: true)" disabled="@(tree.Entities.Count == 0)">Export PNG</button>
         <label class="import">Import JSON <InputFile OnChange="ImportTree" accept=".json,application/json" /></label>
     </div>
 
@@ -98,7 +100,7 @@
                 {
                     var (arc, labelX, labelY) = placement.JunctionArc(junction);
                     var junctionSelected = selectedJunction == junction.Id;
-                    var colour = junctionSelected ? SelectionColour : JunctionColour;
+                    var colour = junctionSelected ? SelectionColour : TreeSvg.JunctionColour;
                     <g @onclick="() => { if (!ConsumeSuppressedClick()) SelectJunction(junction.Id); }" @onclick:stopPropagation style="cursor:pointer" aria-label="AND-junction">
                         <path d="@arc" fill="none" stroke="transparent" stroke-width="14" />
                         <path d="@arc" fill="none" stroke="@colour" stroke-width="4" stroke-linecap="round" />
@@ -112,9 +114,9 @@
                     <g @onclick="() => { if (!ConsumeSuppressedClick()) Select(entity.Id); }" @onclick:stopPropagation
                        @onpointerdown="e => StartEntityDrag(entity.Id, e)" @onpointerdown:stopPropagation style="cursor:pointer">
                         <rect x="@x" y="@y" width="@TreeLayout.EntityWidth" height="@TreeLayout.EntityHeight" rx="6"
-                              fill="#f4f6fa" stroke="@(isSelected ? SelectionColour : groupMembers.Contains(entity.Id) ? JunctionColour : "#888")" stroke-width="@(isSelected || groupMembers.Contains(entity.Id) ? 3 : 1.2)" />
-                        <text x="@(x + 6)" y="@(y - 4)" font-size="11" font-weight="bold" font-family="sans-serif" fill="@(entity.Tag == EntityTag.Ude ? "#b71c1c" : "#1b5e20")">@TagLabel(entity.Tag)</text>
-                        <text x="@(x + TreeLayout.EntityWidth / 2)" y="@(y + TreeLayout.EntityHeight / 2 + 4)" text-anchor="middle" font-size="12" font-family="sans-serif">@TruncateForDisplay(entity.Statement)</text>
+                              fill="#f4f6fa" stroke="@(isSelected ? SelectionColour : groupMembers.Contains(entity.Id) ? TreeSvg.JunctionColour : "#888")" stroke-width="@(isSelected || groupMembers.Contains(entity.Id) ? 3 : 1.2)" />
+                        <text x="@(x + 6)" y="@(y - 4)" font-size="11" font-weight="bold" font-family="sans-serif" fill="@(entity.Tag == EntityTag.Ude ? "#b71c1c" : "#1b5e20")">@TreeSvg.TagLabel(entity.Tag)</text>
+                        <text x="@(x + TreeLayout.EntityWidth / 2)" y="@(y + TreeLayout.EntityHeight / 2 + 4)" text-anchor="middle" font-size="12" font-family="sans-serif">@TreeSvg.TruncateForDisplay(entity.Statement)</text>
                     </g>
                 }
                 </g>
@@ -202,10 +204,8 @@
     private ElementReference canvasRef;
     private bool focusCanvas;
 
-    private const string JunctionColour = "#e65100";
     private const string SelectionColour = "#1565c0";   // keep in step with --selection in app.css
-    private const int MaxDisplayedStatement = 22;
-    private const double ZoomStep = 1.25, WheelSensitivity = 0.0015, DragThreshold = 3, LabelHeight = 16;
+    private const double ZoomStep = 1.25, WheelSensitivity = 0.0015, DragThreshold = 3;
 
     private TreeSummary summary = new Tree().Summarise();
 
@@ -315,8 +315,27 @@
     private async Task ExportTree()
     {
         Begin();
-        var fileName = string.Concat(treeName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)) + ".toc.json";
-        await Library.DownloadAsync(fileName, TreeSerializer.Export(treeName, tree, nudges));
+        await Library.DownloadAsync(FileName(".toc.json"), TreeSerializer.Export(treeName, tree, nudges));
+    }
+
+    private string FileName(string extension) =>
+        string.Concat(treeName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)) + extension;
+
+    // The picture shows the whole tree whatever the pan and zoom.
+    private async Task ExportImage(bool png)
+    {
+        Begin();
+        if (tree.Entities.Count == 0) return;
+        var svg = TreeSvg.Render(tree, placement);
+        try
+        {
+            if (png) await Js.InvokeVoidAsync("tocBuilder.downloadPng", FileName(".png"), svg);
+            else await Js.InvokeVoidAsync("tocBuilder.download", FileName(".svg"), svg, "image/svg+xml");
+        }
+        catch (JSException ex)
+        {
+            Report($"Could not export the image: {ex.Message}", isError: true);
+        }
     }
 
     // A refused file never touches the open tree: nothing changes until the import has succeeded.
@@ -359,8 +378,6 @@
             StateHasChanged();
         }
     }
-
-    private static string TagLabel(EntityTag tag) => tag switch { EntityTag.Ude => "UDE", EntityTag.CoreProblem => "CORE PROBLEM", _ => "" };
 
     private RenderFragment SummarySection(string title, IReadOnlyList<Entity> entities) => @<section>
         <h3>@title (@entities.Count)</h3>
@@ -408,9 +425,6 @@
         ClrCategory.Tautology => "Tautology",
         _ => throw new InvalidOperationException($"Unhandled CLR category {category}.")
     };
-
-    private static string TruncateForDisplay(string text) =>
-        text.Length > MaxDisplayedStatement ? text[..(MaxDisplayedStatement - 1)] + "…" : text;
 
     // The text typed in the "add entity" box names the next entity added, otherwise the default is used.
     private string TakeStatement(string fallback)
@@ -759,7 +773,7 @@
         var xs = placement.Positions.Values.Select(p => p.X).ToList();
         var ys = placement.Positions.Values.Select(p => p.Y).ToList();
         var left = xs.Min() - TreeLayout.Margin;
-        var top = ys.Min() - LabelHeight - TreeLayout.Margin;
+        var top = ys.Min() - TreeSvg.LabelHeight - TreeLayout.Margin;
         viewport = Viewport.Fit(left, top, xs.Max() + TreeLayout.EntityWidth + TreeLayout.Margin - left, ys.Max() + TreeLayout.EntityHeight + TreeLayout.Margin - top, rect.Width, rect.Height);
     }
 
