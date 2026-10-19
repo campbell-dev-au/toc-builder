@@ -37,6 +37,54 @@ public class TreeSerializerTests
     }
 
     [Fact]
+    public void Nudges_come_back_after_an_export_and_import()
+    {
+        var tree = RichTree();
+        var moved = tree.Entities[0].Id;
+        var nudges = new Dictionary<EntityId, Nudge> { [moved] = new Nudge(12.5, -40) };
+
+        var result = TreeSerializer.Import(TreeSerializer.Export("T", tree, nudges));
+
+        Assert.Equal(ImportOutcome.Imported, result.Outcome);
+        Assert.Equal(nudges, result.Nudges);
+    }
+
+    [Fact]
+    public void A_file_saved_before_nudges_existed_imports_with_none()
+    {
+        var json = System.Text.Json.Nodes.JsonNode.Parse(TreeSerializer.Export("Old", RichTree()))!.AsObject();
+        json.Remove("nudges");
+
+        var result = TreeSerializer.Import(json.ToJsonString());
+
+        Assert.Equal(ImportOutcome.Imported, result.Outcome);
+        Assert.Empty(result.Nudges!);
+    }
+
+    [Fact]
+    public void A_file_with_a_null_nudge_is_reported_corrupt_not_a_crash()
+    {
+        var json = System.Text.Json.Nodes.JsonNode.Parse(TreeSerializer.Export("T", RichTree()))!.AsObject();
+        json["nudges"] = new System.Text.Json.Nodes.JsonArray((System.Text.Json.Nodes.JsonNode?)null);
+
+        var result = TreeSerializer.Import(json.ToJsonString());
+
+        Assert.Equal(ImportOutcome.Corrupt, result.Outcome);
+    }
+
+    [Fact]
+    public void Nudges_for_entities_not_in_the_file_are_dropped()
+    {
+        var tree = RichTree();
+        var kept = tree.Entities[0].Id;
+        var nudges = new Dictionary<EntityId, Nudge> { [kept] = new Nudge(1, 2), [new EntityId(999)] = new Nudge(3, 4) };
+
+        var result = TreeSerializer.Import(TreeSerializer.Export("T", tree, nudges));
+
+        Assert.Equal(new Dictionary<EntityId, Nudge> { [kept] = new Nudge(1, 2) }, result.Nudges);
+    }
+
+    [Fact]
     public void The_file_carries_a_schema_version()
     {
         var json = TreeSerializer.Export("Any", new Tree());

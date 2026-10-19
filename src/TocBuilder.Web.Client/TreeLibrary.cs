@@ -35,12 +35,12 @@ public sealed class TreeLibrary(IJSRuntime js)
     }
 
     /// <summary>Writes the tree and records its name in the list, adding it when new.</summary>
-    public async Task SaveAsync(string id, string name, Tree tree)
+    public async Task SaveAsync(string id, string name, Tree tree, IReadOnlyDictionary<EntityId, Nudge>? nudges = null)
     {
         await writes.WaitAsync();
         try
         {
-            await js.InvokeVoidAsync("localStorage.setItem", TreeKey(id), TreeSerializer.Export(name, tree));
+            await js.InvokeVoidAsync("localStorage.setItem", TreeKey(id), TreeSerializer.Export(name, tree, nudges));
             var list = await ListAsync();
             var index = list.FindIndex(t => t.Id == id);
             if (index < 0) list.Add(new SavedTree(id, name));

@@ -66,6 +66,7 @@
             <button type="button" @onclick="() => ZoomBy(ZoomStep)" aria-label="Zoom in">+</button>
             <button type="button" @onclick="Fit">Fit</button>
         </span>
+        <button type="button" @onclick="RerunLayout" disabled="@(nudges.Count == 0)">Re-run layout</button>
         <span class="message @(messageIsError ? "error" : "")" role="status">@message</span>
     </div>
 
@@ -179,7 +180,7 @@
     private Tree tree = new();
     private TreeLayout.Result baseLayout = TreeLayout.Compute(new Tree());   // automatic layout, before any dragging
     private TreeLayout.Result placement = TreeLayout.Compute(new Tree());   // what is drawn: the layout plus the nudges
-    private readonly Dictionary<EntityId, (double X, double Y)> nudges = [];   // how far each dragged entity sits from its laid-out position; not saved
+    private readonly Dictionary<EntityId, Nudge> nudges = [];   // how far each dragged entity sits from its laid-out position; saved with the tree
     private Viewport viewport = Viewport.Identity;
     private enum Drag { None, Pan, Entity }
     private Drag drag;
@@ -234,19 +235,20 @@
             Report($"Could not open \"{saved.Name}\": {result.Message}", isError: true);
             return false;
         }
-        Show(saved.Id, saved.Name, result.Tree);
+        Show(saved.Id, saved.Name, result.Tree, result.Nudges);
         await Library.SetCurrentAsync(saved.Id);
         return true;
     }
 
     // Swaps the open tree. The new tree is already stored, so nothing is saved.
-    private void Show(string id, string name, Tree opened)
+    private void Show(string id, string name, Tree opened, IReadOnlyDictionary<EntityId, Nudge>? openedNudges = null)
     {
         tree = opened;
         currentId = id;
         treeName = name;
         confirmingDelete = false;
         nudges.Clear();
+        foreach (var (entity, nudge) in openedNudges ?? new Dictionary<EntityId, Nudge>()) nudges[entity] = nudge;
         viewport = Viewport.Identity;
         CancelDrag();
         ClearSelection();
@@ -257,13 +259,13 @@
         unsaved = false;
     }
 
-    private async Task CreateTree(string name, Tree? content = null)
+    private async Task CreateTree(string name, Tree? content = null, IReadOnlyDictionary<EntityId, Nudge>? contentNudges = null)
     {
         var id = Guid.NewGuid().ToString("N");
         var created = content ?? new Tree();
-        await Library.SaveAsync(id, name, created);
+        await Library.SaveAsync(id, name, created, contentNudges);
         trees = await Library.ListAsync();
-        Show(id, name, created);
+        Show(id, name, created, contentNudges);
         await Library.SetCurrentAsync(id);
     }
 
@@ -294,7 +296,7 @@
             return;
         }
         treeName = name;
-        await Library.SaveAsync(currentId, treeName, tree);
+        await Library.SaveAsync(currentId, treeName, tree, nudges);
         trees = await Library.ListAsync();
     }
 
@@ -314,7 +316,7 @@
     {
         Begin();
         var fileName = string.Concat(treeName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)) + ".toc.json";
-        await Library.DownloadAsync(fileName, TreeSerializer.Export(treeName, tree));
+        await Library.DownloadAsync(fileName, TreeSerializer.Export(treeName, tree, nudges));
     }
 
     // A refused file never touches the open tree: nothing changes until the import has succeeded.
@@ -339,7 +341,7 @@
             return;
         }
         await SaveIfNeeded();
-        await CreateTree(result.Name ?? "Imported tree", result.Tree);
+        await CreateTree(result.Name ?? "Imported tree", result.Tree, result.Nudges);
         Report($"Imported \"{treeName}\".");
     }
 
@@ -349,7 +351,7 @@
         unsaved = false;
         try
         {
-            await Library.SaveAsync(currentId, treeName, tree);
+            await Library.SaveAsync(currentId, treeName, tree, nudges);
         }
         catch (JSException ex)   // e.g. storage full or disabled; the next change tries again (leaving the flag set would retry on every render)
         {
@@ -799,14 +801,15 @@
             viewport = viewport.PanBy(dx, dy);
             return;
         }
-        var (x, y) = nudges.GetValueOrDefault(draggedEntity);
-        nudges[draggedEntity] = (x + dx / viewport.Scale, y + dy / viewport.Scale);   // the pointer moves in screen pixels, the entity in world units
+        var current = nudges.GetValueOrDefault(draggedEntity);
+        nudges[draggedEntity] = new Nudge(current.X + dx / viewport.Scale, current.Y + dy / viewport.Scale);   // the pointer moves in screen pixels, the entity in world units
         ApplyNudges();
     }
 
     // Leaving the canvas ends the drag with no click to follow, so there is nothing to suppress.
     private void CancelDrag()
     {
+        if (drag == Drag.Entity && dragMoved) unsaved = true;
         drag = Drag.None;
         suppressClick = false;
     }
@@ -814,7 +817,17 @@
     private void EndDrag()
     {
         suppressClick = dragMoved;
+        if (drag == Drag.Entity && dragMoved) unsaved = true;
         drag = Drag.None;
+    }
+
+    private void RerunLayout()
+    {
+        Begin();
+        if (nudges.Count == 0) return;
+        nudges.Clear();
+        ApplyNudges();
+        unsaved = true;
     }
 
     private void ApplyNudges()

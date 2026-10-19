@@ -6,8 +6,11 @@ namespace TocBuilder.Domain;
 
 public enum ImportOutcome { Imported, NewerVersion, Corrupt }
 
-/// <summary>The result of reading a file. <see cref="Tree"/> and <see cref="Name"/> are set only when imported; otherwise <see cref="Message"/> says why not.</summary>
-public sealed record ImportResult(ImportOutcome Outcome, string? Name = null, Tree? Tree = null, string? Message = null);
+/// <summary>How far the user has dragged an Entity from where the automatic layout puts it, in layout units.</summary>
+public readonly record struct Nudge(double X, double Y);
+
+/// <summary>The result of reading a file. <see cref="Tree"/>, <see cref="Name"/> and <see cref="Nudges"/> are set only when imported; otherwise <see cref="Message"/> says why not.</summary>
+public sealed record ImportResult(ImportOutcome Outcome, string? Name = null, Tree? Tree = null, string? Message = null, IReadOnlyDictionary<EntityId, Nudge>? Nudges = null);
 
 /// <summary>Reads and writes a tree as a versioned JSON file.</summary>
 public static class TreeSerializer
@@ -21,7 +24,7 @@ public static class TreeSerializer
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public static string Export(string name, Tree tree)
+    public static string Export(string name, Tree tree, IReadOnlyDictionary<EntityId, Nudge>? nudges = null)
     {
         var (nextId, nextJunctionId, nextReservationId) = tree.NextIds;
         var file = new FileDto(
@@ -31,7 +34,8 @@ public static class TreeSerializer
             [.. tree.Links.Select(l => new LinkDto(l.Cause.Value, l.Effect.Value))],
             [.. tree.Junctions.Select(j => new JunctionDto(j.Id.Value, j.Effect.Value, [.. j.Causes.Select(c => c.Value)]))],
             [.. tree.Reservations.Select(ToDto)],
-            nextId, nextJunctionId, nextReservationId);
+            nextId, nextJunctionId, nextReservationId,
+            [.. (nudges ?? new Dictionary<EntityId, Nudge>()).Select(n => new NudgeDto(n.Key.Value, n.Value.X, n.Value.Y))]);
         return JsonSerializer.Serialize(file, Options);
     }
 
@@ -65,6 +69,7 @@ public static class TreeSerializer
             || file.Entities.Any(e => e is null || e.Statement is null || !Enum.IsDefined(e.Tag))
             || file.Links.Any(l => l is null)
             || file.Junctions.Any(j => j is null || j.Causes is null)
+            || (file.Nudges is not null && file.Nudges.Any(n => n is null))
             || file.Reservations.Any(r => r is null || r.Note is null || r.TargetKind is null || !Enum.IsDefined(r.Category) || !Enum.IsDefined(r.State)))
             return Corrupt("This file is missing parts of the tree.");
 
@@ -97,7 +102,9 @@ public static class TreeSerializer
             file.Junctions.Select(j => new AndJunction(new JunctionId(j.Id), new EntityId(j.Effect), [.. j.Causes.Select(c => new EntityId(c))])),
             file.Reservations.Select(FromDto),
             file.NextId, file.NextJunctionId, file.NextReservationId);
-        return new ImportResult(ImportOutcome.Imported, file.Name, tree);
+        var nudges = (file.Nudges ?? []).Where(n => entityIds.Contains(n.Entity)).DistinctBy(n => n.Entity)
+            .ToDictionary(n => new EntityId(n.Entity), n => new Nudge(n.X, n.Y));   // a nudge for an Entity that is not there has nothing to move
+        return new ImportResult(ImportOutcome.Imported, file.Name, tree, Nudges: nudges);
     }
 
     private static bool HasCycle(HashSet<int> entityIds, HashSet<(int Cause, int Effect)> links)
@@ -138,7 +145,8 @@ public static class TreeSerializer
         return new Reservation(new ReservationId(r.Id), target, r.Category, r.State, r.Note);
     }
 
-    private sealed record FileDto(int Version, string Name, EntityDto[] Entities, LinkDto[] Links, JunctionDto[] Junctions, ReservationDto[] Reservations, int NextId, int NextJunctionId, int NextReservationId);
+    private sealed record FileDto(int Version, string Name, EntityDto[] Entities, LinkDto[] Links, JunctionDto[] Junctions, ReservationDto[] Reservations, int NextId, int NextJunctionId, int NextReservationId, NudgeDto[]? Nudges = null);
+    private sealed record NudgeDto(int Entity, double X, double Y);
     private sealed record EntityDto(int Id, string Statement, EntityTag Tag);
     private sealed record LinkDto(int Cause, int Effect);
     private sealed record JunctionDto(int Id, int Effect, int[] Causes);
