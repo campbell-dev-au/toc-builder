@@ -10,7 +10,7 @@ public enum ImportOutcome { Imported, NewerVersion, Corrupt }
 public readonly record struct Nudge(double X, double Y);
 
 /// <summary>The result of reading a file. <see cref="Tree"/>, <see cref="Name"/> and <see cref="Nudges"/> are set only when imported; otherwise <see cref="Message"/> says why not.</summary>
-public sealed record ImportResult(ImportOutcome Outcome, string? Name = null, Tree? Tree = null, string? Message = null, IReadOnlyDictionary<EntityId, Nudge>? Nudges = null);
+public sealed record ImportResult(ImportOutcome Outcome, string? Name = null, Tree? Tree = null, string? Message = null, IReadOnlyDictionary<EntityId, Nudge>? Nudges = null, ViewMode View = ViewMode.Summary);
 
 /// <summary>Reads and writes a tree as a versioned JSON file.</summary>
 public static class TreeSerializer
@@ -24,7 +24,7 @@ public static class TreeSerializer
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public static string Export(string name, Tree tree, IReadOnlyDictionary<EntityId, Nudge>? nudges = null)
+    public static string Export(string name, Tree tree, IReadOnlyDictionary<EntityId, Nudge>? nudges = null, ViewMode view = ViewMode.Summary)
     {
         var (nextId, nextCode, nextJunctionId, nextReservationId) = tree.NextIds;
         var file = new FileDto(
@@ -37,7 +37,8 @@ public static class TreeSerializer
             nextId, nextJunctionId, nextReservationId,
             nextCode,
             [.. (nudges ?? new Dictionary<EntityId, Nudge>()).Select(n => new NudgeDto(n.Key.Value, n.Value.X, n.Value.Y))],
-            tree.Scope);
+            tree.Scope,
+            view);
         return JsonSerializer.Serialize(file, Options);
     }
 
@@ -87,6 +88,7 @@ public static class TreeSerializer
             || file.Entities.Any(e => e is null || e.Statement is null || !Enum.IsDefined(e.Tag) || CodeNumber(e.Code) is null || e.Summary?.Trim().Length > Tree.MaxSummaryLength)
             || file.Links.Any(l => l is null)
             || file.Junctions.Any(j => j is null || j.Causes is null)
+            || !Enum.IsDefined(file.View)
             || (file.Nudges is not null && file.Nudges.Any(n => n is null))
             || file.Reservations.Any(r => r is null || r.Note is null || r.TargetKind is null || !Enum.IsDefined(r.Category) || !Enum.IsDefined(r.State)))
             return Corrupt("This file is missing parts of the tree.");
@@ -125,7 +127,7 @@ public static class TreeSerializer
             file.NextId, file.NextCode, file.NextJunctionId, file.NextReservationId);
         var nudges = (file.Nudges ?? []).Where(n => entityIds.Contains(n.Entity)).DistinctBy(n => n.Entity)
             .ToDictionary(n => new EntityId(n.Entity), n => new Nudge(n.X, n.Y));   // a nudge for an Entity that is not there has nothing to move
-        return new ImportResult(ImportOutcome.Imported, file.Name, tree, Nudges: nudges);
+        return new ImportResult(ImportOutcome.Imported, file.Name, tree, Nudges: nudges, View: file.View);
     }
 
     /// <summary>The number in a Code such as "E12", or null when the text is not a Code.</summary>
@@ -170,7 +172,7 @@ public static class TreeSerializer
         return new Reservation(new ReservationId(r.Id), target, r.Category, r.State, r.Note);
     }
 
-    private sealed record FileDto(int Version, string Name, EntityDto[] Entities, LinkDto[] Links, JunctionDto[] Junctions, ReservationDto[] Reservations, int NextId, int NextJunctionId, int NextReservationId, int NextCode, NudgeDto[]? Nudges = null, string? Scope = null);
+    private sealed record FileDto(int Version, string Name, EntityDto[] Entities, LinkDto[] Links, JunctionDto[] Junctions, ReservationDto[] Reservations, int NextId, int NextJunctionId, int NextReservationId, int NextCode, NudgeDto[]? Nudges = null, string? Scope = null, ViewMode View = ViewMode.Summary);
     private sealed record NudgeDto(int Entity, double X, double Y);
     private sealed record EntityDto(int Id, string Code, string Statement, EntityTag Tag, string? Summary = null);
     private sealed record LinkDto(int Cause, int Effect);

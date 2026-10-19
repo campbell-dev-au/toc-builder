@@ -30,6 +30,10 @@ _Avoid_: Label, title, shorthand
 A short sequential identifier for an Entity, such as E1, E2, unique within a tree and never reused. It identifies an Entity without describing it.
 _Avoid_: ID, number, name
 
+**View**:
+A per-tree choice of how much of each Entity the canvas shows: Summary view (compact, the default) or Text view (the full statement wrapped over several lines). Saved with the tree.
+_Avoid_: Mode, zoom level
+
 **Causal link**:
 A claimed sufficiency relationship from one or more causes to an effect.
 _Avoid_: Edge, arrow, connection

@@ -1,4 +1,5 @@
 window.tocBuilder = {
+    devicePixelRatio() { return window.devicePixelRatio; },
     rect(element) {
         const r = element.getBoundingClientRect();
         return [r.left, r.top, r.width, r.height];
