@@ -670,9 +670,10 @@
         focusCanvas = true;   // so the keyboard can keep building straight away
     }
 
-    private void Deselect()
+    private void Deselect(MouseEventArgs e)
     {
         if (ConsumeSuppressedClick()) return;
+        if (e.ShiftKey || e.CtrlKey || e.MetaKey) return;   // a multi-select click that just missed an Entity must not drop the selection
         ClearSelection();
         ClearModes();
     }

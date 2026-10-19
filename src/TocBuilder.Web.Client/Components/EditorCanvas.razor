@@ -9,7 +9,7 @@
     }
     else
     {
-        <svg xmlns="http://www.w3.org/2000/svg" @onclick="OnDeselect" @onpointerdown="OnStartPan">
+        <svg xmlns="http://www.w3.org/2000/svg" @onclick="e => OnDeselect.InvokeAsync(e)" @onpointerdown="OnStartPan">
             <defs>
                 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                     <path d="M0,0 L10,5 L0,10 z" fill="#555" />
@@ -123,7 +123,7 @@
     [Parameter] public EventCallback<PointerEventArgs> OnPointerLeave { get; set; }
     [Parameter] public EventCallback<PointerEventArgs> OnStartPan { get; set; }
     [Parameter] public EventCallback<(EntityId Id, PointerEventArgs Args)> OnStartEntityDrag { get; set; }
-    [Parameter] public EventCallback OnDeselect { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnDeselect { get; set; }
     [Parameter] public EventCallback<EntityId> OnSelectEntity { get; set; }
     [Parameter] public EventCallback<EntityId> OnToggleEntity { get; set; }   // Shift- or Ctrl-click: add to or take out of the selection
     [Parameter] public EventCallback<CausalLink> OnSelectLink { get; set; }
