@@ -5,14 +5,14 @@ using TocBuilder.Domain;
 
 namespace TocBuilder.Web.Client;
 
-/// <summary>The tree as a standalone SVG picture, framed on the whole tree whatever the pan and zoom.</summary>
+/// <summary>The tree as a standalone SVG picture, framed on the whole tree whatever the pan and zoom. Every Entity shows its Code and full statement, whichever view the canvas is in, so <paramref name="placement"/> must be laid out for Text view.</summary>
 public static class TreeSvg
 {
     public const double LabelHeight = 16;   // room above an entity for its tag
     public const string JunctionColour = "#e65100";
     private const int MaxDisplayedStatement = 22;
 
-    public static string Render(Tree tree, TreeLayout.Result placement, ViewMode view = ViewMode.Summary)
+    public static string Render(Tree tree, TreeLayout.Result placement)
     {
         var (left, top, width, height) = placement.Frame();
 
@@ -35,16 +35,12 @@ public static class TreeSvg
             svg.Append($"<rect x=\"{Num(x)}\" y=\"{Num(y)}\" width=\"{Num(boxW)}\" height=\"{Num(boxH)}\" rx=\"6\" fill=\"#f4f6fa\" stroke=\"#888\" stroke-width=\"1.2\" />");
             if (entity.Tag != EntityTag.None)
                 svg.Append($"<text x=\"{Num(x + 6)}\" y=\"{Num(y - 4)}\" font-size=\"11\" font-weight=\"bold\" font-family=\"sans-serif\" fill=\"{(entity.Tag == EntityTag.Ude ? "#b71c1c" : "#1b5e20")}\">{TagLabel(entity.Tag)}</text>");
-            if (view == ViewMode.Text)
-            {
-                var lines = WrapStatement(entity.Statement, TreeLayout.TextLineChars);
-                svg.Append($"<text x=\"{Num(x + boxW / 2)}\" y=\"{Num(y + TreeLayout.TextPadding)}\" text-anchor=\"middle\" font-size=\"12\" font-family=\"sans-serif\">");
-                for (var i = 0; i < lines.Count; i++)
-                    svg.Append($"<tspan x=\"{Num(x + boxW / 2)}\" dy=\"{(i == 0 ? 0 : TreeLayout.TextLineHeight)}\">{SecurityElement.Escape(lines[i])}</tspan>");
-                svg.Append("</text></g>");
-            }
-            else
-                svg.Append($"<text x=\"{Num(x + boxW / 2)}\" y=\"{Num(y + boxH / 2 + 4)}\" text-anchor=\"middle\" font-size=\"12\" font-family=\"sans-serif\">{SecurityElement.Escape(TruncateForDisplay(entity.Summary ?? entity.Statement))}</text></g>");
+            svg.Append($"<text x=\"{Num(x + boxW - 6)}\" y=\"{Num(y - 4)}\" text-anchor=\"end\" font-size=\"11\" font-family=\"sans-serif\" fill=\"#555\">{SecurityElement.Escape(entity.Code)}</text>");
+            var lines = WrapStatement(entity.Statement, TreeLayout.TextLineChars);
+            svg.Append($"<text x=\"{Num(x + boxW / 2)}\" y=\"{Num(y + TreeLayout.TextPadding)}\" text-anchor=\"middle\" font-size=\"12\" font-family=\"sans-serif\">");
+            for (var i = 0; i < lines.Count; i++)
+                svg.Append($"<tspan x=\"{Num(x + boxW / 2)}\" dy=\"{(i == 0 ? 0 : TreeLayout.TextLineHeight)}\">{SecurityElement.Escape(lines[i])}</tspan>");
+            svg.Append("</text></g>");
         }
         svg.Append("</svg>");
         return svg.ToString();

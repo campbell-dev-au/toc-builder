@@ -6,7 +6,9 @@ namespace TocBuilder.Domain.Tests;
 public class SvgExportTests
 {
     private static XElement Render(Tree tree, params (EntityId Id, double X, double Y)[] positions) =>
-        XDocument.Parse(TreeSvg.Render(tree, new TreeLayout.Result(positions.ToDictionary(p => p.Id, p => (p.X, p.Y)), 0, 0))).Root!;
+        XDocument.Parse(TreeSvg.Render(tree, new TreeLayout.Result(
+            positions.ToDictionary(p => p.Id, p => (p.X, p.Y)), 0, 0,
+            tree.Entities.ToDictionary(e => e.Id, e => TreeLayout.SizeOf(e, ViewMode.Text))))).Root!;
 
     [Fact]
     public void The_picture_frames_the_whole_tree_with_no_pan_or_zoom_applied()
@@ -17,9 +19,9 @@ public class SvgExportTests
 
         var svg = Render(tree, (a.Id, 100, 50), (b.Id, 400, 300));
 
-        // Entities are 150x44; the frame adds a 20 margin all round and 16 above for the tag labels.
-        Assert.Equal("80 14 490 350", svg.Attribute("viewBox")!.Value);
-        Assert.Equal("490", svg.Attribute("width")!.Value);
+        // Entities are 220x44; the frame adds a 20 margin all round and 16 above for the tag labels.
+        Assert.Equal("80 14 560 350", svg.Attribute("viewBox")!.Value);
+        Assert.Equal("560", svg.Attribute("width")!.Value);
         Assert.Equal("350", svg.Attribute("height")!.Value);
         Assert.DoesNotContain(svg.Descendants(), e => e.Attribute("transform") is not null);
     }
@@ -43,17 +45,22 @@ public class SvgExportTests
     }
 
     [Fact]
-    public void Statements_are_shown_shortened_and_cannot_break_the_markup()
+    public void Full_statements_and_codes_are_shown_wrapped_and_cannot_break_the_markup()
     {
         var tree = new Tree();
         var a = tree.AddEntity("Cost < price & \"x\"");
         var b = tree.AddCause(a.Id, "A very long statement that does not fit in the box");
+        tree.SetSummary(b.Id, "Long one");
 
         var svg = Render(tree, (a.Id, 0, 0), (b.Id, 0, 100));
 
-        var labels = svg.Descendants().Where(e => e.Name.LocalName == "text").Select(e => e.Value).ToList();
-        Assert.Contains("Cost < price & \"x\"", labels);
-        Assert.Contains("A very long statement…", labels);
+        var texts = svg.Descendants().Where(e => e.Name.LocalName == "text").ToList();
+        Assert.Contains(texts, t => t.Value == "Cost < price & \"x\"");
+        Assert.Contains(texts, t => string.Concat(t.Elements().Select(l => l.Value + " ")).Trim() == "A very long statement that does not fit in the box");
+        Assert.DoesNotContain(texts, t => t.Value == "Long one");
+        var labels = texts.Select(t => t.Value).ToList();
+        Assert.Contains("E1", labels);
+        Assert.Contains("E2", labels);
     }
 
     [Fact]
@@ -69,8 +76,8 @@ public class SvgExportTests
 
         var arrows = svg.Descendants().Where(e => e.Name.LocalName == "path" && e.Attribute("marker-end") is not null).ToList();
         Assert.Equal(2, arrows.Count);
-        // From the top of a cause (centre x + 75) to the bottom of the effect.
-        Assert.StartsWith("M75,100 ", arrows[0].Attribute("d")!.Value);
+        // From the top of a cause (centre x + 110) to the bottom of the effect.
+        Assert.StartsWith("M110,100 ", arrows[0].Attribute("d")!.Value);
         Assert.Contains(svg.Descendants(), e => e.Name.LocalName == "text" && e.Value == "AND");
         var markerId = svg.Descendants().Single(e => e.Name.LocalName == "marker").Attribute("id")!.Value;
         Assert.All(arrows, a => Assert.Equal($"url(#{markerId})", a.Attribute("marker-end")!.Value));
