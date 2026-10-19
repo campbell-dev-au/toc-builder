@@ -28,6 +28,8 @@ h1:focus {
 .editor .canvas { overflow: hidden; border: 1px solid #ccc; height: 70vh; outline: none; user-select: none; touch-action: none; }
 .editor .canvas svg { display: block; width: 100%; height: 100%; }
 .editor .zoom { display: inline-flex; gap: 0.25rem; align-items: center; }
+.editor .view { display: inline-flex; gap: 0.25rem; }
+.editor .view button[aria-pressed="true"] { font-weight: bold; border-color: var(--selection); }
 .editor .zoom .level { min-width: 3rem; text-align: center; }
 .editor .canvas:focus-visible { box-shadow: 0 0 0 2px var(--selection); }
 .editor .empty { color: #666; padding: 1rem; }

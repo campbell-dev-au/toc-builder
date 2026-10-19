@@ -62,6 +62,36 @@ public class TreeSerializerTests
     }
 
     [Fact]
+    public void The_view_comes_back_after_an_export_and_import()
+    {
+        var result = TreeSerializer.Import(TreeSerializer.Export("T", RichTree(), view: ViewMode.Text));
+
+        Assert.Equal(ImportOutcome.Imported, result.Outcome);
+        Assert.Equal(ViewMode.Text, result.View);
+    }
+
+    [Fact]
+    public void A_file_saved_before_views_existed_imports_in_Summary_view()
+    {
+        var json = System.Text.Json.Nodes.JsonNode.Parse(TreeSerializer.Export("Old", RichTree(), view: ViewMode.Text))!.AsObject();
+        json.Remove("view");
+
+        var result = TreeSerializer.Import(json.ToJsonString());
+
+        Assert.Equal(ImportOutcome.Imported, result.Outcome);
+        Assert.Equal(ViewMode.Summary, result.View);
+    }
+
+    [Fact]
+    public void A_file_with_an_unknown_view_is_reported_corrupt()
+    {
+        var json = System.Text.Json.Nodes.JsonNode.Parse(TreeSerializer.Export("T", RichTree()))!.AsObject();
+        json["view"] = "Poster";
+
+        Assert.Equal(ImportOutcome.Corrupt, TreeSerializer.Import(json.ToJsonString()).Outcome);
+    }
+
+    [Fact]
     public void A_file_with_a_null_nudge_is_reported_corrupt_not_a_crash()
     {
         var json = System.Text.Json.Nodes.JsonNode.Parse(TreeSerializer.Export("T", RichTree()))!.AsObject();

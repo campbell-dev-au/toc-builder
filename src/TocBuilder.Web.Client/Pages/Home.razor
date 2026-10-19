@@ -10,18 +10,18 @@
 <div class="editor">
     <GlobalBar Trees="trees" CurrentId="@currentId" TreeName="@treeName" EditRevision="editRevision"
                @bind-ConfirmingDelete="confirmingDelete" HasEntities="@(tree.Entities.Count > 0)" CanUndo="tree.CanUndo" CanRedo="tree.CanRedo"
-               ZoomPercent="@((int)Math.Round(viewport.Scale * 100))" CanRerunLayout="@(nudges.Count > 0)"
+               ZoomPercent="@((int)Math.Round(viewport.Scale * 100))" CanRerunLayout="@(nudges.Count > 0)" View="view"
                Message="@message" MessageIsError="messageIsError"
                OnOpen="OpenTree" OnRename="RenameTree" OnNew="NewTree" OnDelete="DeleteTree" OnUndo="Undo" OnRedo="Redo"
                OnExportJson="ExportTree" OnExportImage="ExportImage" OnImport="ImportTree"
-               OnZoom="ZoomBy" OnFit="Fit" OnRerunLayout="RerunLayout" />
+               OnZoom="ZoomBy" OnFit="Fit" OnRerunLayout="RerunLayout" OnViewChange="SetView" />
 
     <ScopeBar @ref="scopeBar" Scope="@tree.Scope" EditRevision="editRevision" OnEdit="EditScope" />
 
     <AddEntityForm @bind-Statement="statement" OnSubmit="AddEntity" />
 
     <div class="workspace">
-    <EditorCanvas @ref="canvas" Tree="tree" Placement="placement" Viewport="viewport" Selected="selected" SelectedJunction="selectedJunction"
+    <EditorCanvas @ref="canvas" Tree="tree" Placement="placement" View="view" Viewport="viewport" Selected="selected" SelectedJunction="selectedJunction"
                   SelectedLink="selectedLink" GroupMembers="groupMembers" Suggestions="suggestions" GhostAnchor="ghostAnchor"
                   SelectedGhost="selectedGhost" ConsumeSuppressedClick="ConsumeSuppressedClick"
                   OnKeyDown="OnKeyDown" OnWheel="OnWheel" OnPointerMove="OnPointerMove" OnPointerUp="EndDrag" OnPointerLeave="CancelDrag"
@@ -46,6 +46,7 @@
     private TreeLayout.Result baseLayout = TreeLayout.Compute(new Tree());   // automatic layout, before any dragging
     private TreeLayout.Result placement = TreeLayout.Compute(new Tree());   // what is drawn: the layout plus the nudges
     private readonly Dictionary<EntityId, Nudge> nudges = [];   // how far each dragged entity sits from its laid-out position; saved with the tree
+    private ViewMode view = ViewMode.Summary;   // Summary or full-statement Text; saved with the tree
     private Viewport viewport = Viewport.Identity;
     private enum Drag { None, Pan, Entity }
     private Drag drag;
@@ -103,18 +104,19 @@
             Report($"Could not open \"{saved.Name}\": {result.Message}", isError: true);
             return false;
         }
-        Show(saved.Id, saved.Name, result.Tree, result.Nudges);
+        Show(saved.Id, saved.Name, result.Tree, result.Nudges, result.View);
         await Library.SetCurrentAsync(saved.Id);
         return true;
     }
 
     // Swaps the open tree. The new tree is already stored, so nothing is saved.
-    private void Show(string id, string name, Tree opened, IReadOnlyDictionary<EntityId, Nudge>? openedNudges = null)
+    private void Show(string id, string name, Tree opened, IReadOnlyDictionary<EntityId, Nudge>? openedNudges = null, ViewMode openedView = ViewMode.Summary)
     {
         tree = opened;
         currentId = id;
         treeName = name;
         confirmingDelete = false;
+        view = openedView;
         nudges.Clear();
         foreach (var (entity, nudge) in openedNudges ?? new Dictionary<EntityId, Nudge>()) nudges[entity] = nudge;
         viewport = Viewport.Identity;
@@ -128,13 +130,13 @@
         unsaved = false;
     }
 
-    private async Task CreateTree(string name, Tree? content = null, IReadOnlyDictionary<EntityId, Nudge>? contentNudges = null)
+    private async Task CreateTree(string name, Tree? content = null, IReadOnlyDictionary<EntityId, Nudge>? contentNudges = null, ViewMode contentView = ViewMode.Summary)
     {
         var id = Guid.NewGuid().ToString("N");
         var created = content ?? new Tree();
-        await Library.SaveAsync(id, name, created, contentNudges);
+        await Library.SaveAsync(id, name, created, contentNudges, contentView);
         trees = await Library.ListAsync();
-        Show(id, name, created, contentNudges);
+        Show(id, name, created, contentNudges, contentView);
         await Library.SetCurrentAsync(id);
     }
 
@@ -165,7 +167,7 @@
             return;
         }
         treeName = name;
-        await Library.SaveAsync(currentId, treeName, tree, nudges);
+        await Library.SaveAsync(currentId, treeName, tree, nudges, view);
         trees = await Library.ListAsync();
     }
 
@@ -184,7 +186,7 @@
     private async Task ExportTree()
     {
         Begin();
-        await Library.DownloadAsync(FileName(".toc.json"), TreeSerializer.Export(treeName, tree, nudges));
+        await Library.DownloadAsync(FileName(".toc.json"), TreeSerializer.Export(treeName, tree, nudges, view));
     }
 
     private string FileName(string extension) =>
@@ -195,7 +197,7 @@
     {
         Begin();
         if (tree.Entities.Count == 0) return;
-        var svg = TreeSvg.Render(tree, placement);
+        var svg = TreeSvg.Render(tree, placement, view);
         try
         {
             if (png) await Js.InvokeVoidAsync("tocBuilder.downloadPng", FileName(".png"), svg);
@@ -229,7 +231,7 @@
             return;
         }
         await SaveIfNeeded();
-        await CreateTree(result.Name ?? "Imported tree", result.Tree, result.Nudges);
+        await CreateTree(result.Name ?? "Imported tree", result.Tree, result.Nudges, result.View);
         Report($"Imported \"{treeName}\".");
     }
 
@@ -239,7 +241,7 @@
         unsaved = false;
         try
         {
-            await Library.SaveAsync(currentId, treeName, tree, nudges);
+            await Library.SaveAsync(currentId, treeName, tree, nudges, view);
         }
         catch (JSException ex)   // e.g. storage full or disabled; the next change tries again (leaving the flag set would retry on every render)
         {
@@ -716,11 +718,8 @@
     {
         if (tree.Entities.Count == 0) return;
         var rect = await CanvasRect();
-        var xs = placement.Positions.Values.Select(p => p.X).ToList();
-        var ys = placement.Positions.Values.Select(p => p.Y).ToList();
-        var left = xs.Min() - TreeLayout.Margin;
-        var top = ys.Min() - TreeSvg.LabelHeight - TreeLayout.Margin;
-        viewport = Viewport.Fit(left, top, xs.Max() + TreeLayout.EntityWidth + TreeLayout.Margin - left, ys.Max() + TreeLayout.EntityHeight + TreeLayout.Margin - top, rect.Width, rect.Height);
+        var (left, top, width, height) = placement.Frame();
+        viewport = Viewport.Fit(left, top, width, height, rect.Width, rect.Height);
     }
 
     private void StartPan(PointerEventArgs e)
@@ -781,6 +780,16 @@
         drag = Drag.None;
     }
 
+    private void SetView(ViewMode chosen)
+    {
+        Begin();
+        if (chosen == view) return;
+        view = chosen;
+        baseLayout = TreeLayout.Compute(tree, view);
+        ApplyNudges();
+        unsaved = true;
+    }
+
     private void RerunLayout()
     {
         Begin();
@@ -804,7 +813,7 @@
     private void Refresh()
     {
         unsaved = true;
-        baseLayout = TreeLayout.Compute(tree);
+        baseLayout = TreeLayout.Compute(tree, view);
         ApplyNudges();
         report = tree.Report();
     }

@@ -1,3 +1,4 @@
+@using TocBuilder.Domain
 <div class="global-bar" role="toolbar" aria-label="Tree">
     <select value="@CurrentId" @onchange="OnOpen" aria-label="Open tree">
         @foreach (var saved in Trees)
@@ -33,6 +34,10 @@
         <button type="button" @onclick="() => OnZoom.InvokeAsync(ZoomStep)" aria-label="Zoom in">+</button>
         <button type="button" @onclick="OnFit">Fit</button>
     </span>
+    <span class="view" role="group" aria-label="View">
+        <button type="button" @onclick="() => OnViewChange.InvokeAsync(ViewMode.Summary)" aria-pressed="@(View == ViewMode.Summary)">Summary view</button>
+        <button type="button" @onclick="() => OnViewChange.InvokeAsync(ViewMode.Text)" aria-pressed="@(View == ViewMode.Text)">Text view</button>
+    </span>
     <button type="button" @onclick="OnRerunLayout" disabled="@(!CanRerunLayout)">Re-run layout</button>
     <span class="message @(MessageIsError ? "error" : "")" role="status">@Message</span>
 </div>
@@ -51,6 +56,7 @@
     [Parameter] public bool CanRedo { get; set; }
     [Parameter] public int ZoomPercent { get; set; }
     [Parameter] public bool CanRerunLayout { get; set; }
+    [Parameter] public ViewMode View { get; set; }
     [Parameter] public string Message { get; set; } = "";
     [Parameter] public bool MessageIsError { get; set; }
 
@@ -66,4 +72,5 @@
     [Parameter] public EventCallback<double> OnZoom { get; set; }   // the factor to zoom by
     [Parameter] public EventCallback OnFit { get; set; }
     [Parameter] public EventCallback OnRerunLayout { get; set; }
+    [Parameter] public EventCallback<ViewMode> OnViewChange { get; set; }
 }

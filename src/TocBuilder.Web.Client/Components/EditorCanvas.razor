@@ -37,19 +37,20 @@
             @foreach (var entity in Tree.Entities)
             {
                 var (x, y) = Placement.Positions[entity.Id];
+                var (w, h) = (Placement.WidthOf(entity.Id), Placement.HeightOf(entity.Id));
                 var isSelected = Selected == entity.Id;
                 <g @onclick="() => { if (!ConsumeSuppressedClick()) OnSelectEntity.InvokeAsync(entity.Id); }" @onclick:stopPropagation
                    @onpointerdown="e => OnStartEntityDrag.InvokeAsync((entity.Id, e))" @onpointerdown:stopPropagation style="cursor:pointer">
                     <title>@entity.Statement</title>
-                    <rect x="@x" y="@y" width="@TreeLayout.EntityWidth" height="@TreeLayout.EntityHeight" rx="6"
+                    <rect x="@x" y="@y" width="@w" height="@h" rx="6"
                           fill="#f4f6fa" stroke="@(isSelected ? SelectionColour : GroupMembers.Contains(entity.Id) ? TreeSvg.JunctionColour : "#888")" stroke-width="@(isSelected || GroupMembers.Contains(entity.Id) ? 3 : 1.2)" />
                     <text x="@(x + 6)" y="@(y - 4)" font-size="11" font-weight="bold" font-family="sans-serif" fill="@(entity.Tag == EntityTag.Ude ? "#b71c1c" : "#1b5e20")">@TreeSvg.TagLabel(entity.Tag)</text>
-                    <text x="@(x + TreeLayout.EntityWidth - 6)" y="@(y - 4)" text-anchor="end" font-size="11" font-family="sans-serif" fill="#555" data-testid="entity-code">@entity.Code</text>
-                    @{ var lines = TreeSvg.DisplayLines(entity); }
-                    <text x="@(x + TreeLayout.EntityWidth / 2)" y="@(y + TreeLayout.EntityHeight / 2 + (lines.Count == 1 ? 4 : -2))" text-anchor="middle" font-size="12" font-family="sans-serif">
+                    <text x="@(x + w - 6)" y="@(y - 4)" text-anchor="end" font-size="11" font-family="sans-serif" fill="#555" data-testid="entity-code">@entity.Code</text>
+                    @{ var lines = View == ViewMode.Text ? TreeSvg.WrapStatement(entity.Statement, TreeLayout.TextLineChars) : TreeSvg.DisplayLines(entity); }
+                    <text x="@(x + w / 2)" y="@(View == ViewMode.Text ? y + TreeLayout.TextPadding : y + h / 2 + (lines.Count == 1 ? 4 : -2))" text-anchor="middle" font-size="12" font-family="sans-serif">
                         @for (var i = 0; i < lines.Count; i++)
                         {
-                            <tspan x="@(x + TreeLayout.EntityWidth / 2)" dy="@(i == 0 ? 0 : 14)">@lines[i]</tspan>
+                            <tspan x="@(x + w / 2)" dy="@(i == 0 ? 0 : 14)">@lines[i]</tspan>
                         }
                     </text>
                 </g>
@@ -64,8 +65,8 @@
                     var picked = SelectedGhost == ghost;
                     var below = ghost.Kind != SuggestionKind.Effect;
                     var (fromX, fromY, toX, toY) = below
-                        ? (gx + TreeLayout.EntityWidth / 2, gy, anchor.X + TreeLayout.EntityWidth / 2, anchor.Y + TreeLayout.EntityHeight)
-                        : (anchor.X + TreeLayout.EntityWidth / 2, anchor.Y, gx + TreeLayout.EntityWidth / 2, gy + TreeLayout.EntityHeight);
+                        ? (gx + TreeLayout.EntityWidth / 2, gy, anchor.X + Placement.WidthOf(GhostAnchor) / 2, anchor.Y + Placement.HeightOf(GhostAnchor))
+                        : (anchor.X + Placement.WidthOf(GhostAnchor) / 2, anchor.Y, gx + TreeLayout.EntityWidth / 2, gy + TreeLayout.EntityHeight);
                     <g @onclick="() => OnSelectGhost.InvokeAsync(ghost)" @onclick:stopPropagation @onpointerdown:stopPropagation style="cursor:pointer" aria-label="Suggestion" opacity="0.8">
                         <title>@ghost.Statement</title>
                         <path d="M@Num(fromX),@Num(fromY) L@Num(toX),@Num(toY)" fill="none" stroke="#777" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow)" />
@@ -91,6 +92,7 @@
 
     [Parameter, EditorRequired] public Tree Tree { get; set; } = null!;
     [Parameter, EditorRequired] public TreeLayout.Result Placement { get; set; } = null!;
+    [Parameter] public ViewMode View { get; set; }
     [Parameter] public Viewport Viewport { get; set; } = Viewport.Identity;
     [Parameter] public EntityId? Selected { get; set; }
     [Parameter] public JunctionId? SelectedJunction { get; set; }
@@ -122,10 +124,10 @@
     // Ghosts sit in a row of their own, centred on their Entity: below the whole tree for causes and above it for effects, so they never cover an Entity.
     private (double X, double Y) GhostPosition((double X, double Y) anchor, SuggestionKind kind, int index, int count)
     {
-        var x = anchor.X + (index - (count - 1) / 2.0) * (TreeLayout.EntityWidth + 30);
+        var x = anchor.X + Placement.WidthOf(GhostAnchor) / 2 - TreeLayout.EntityWidth / 2 + (index - (count - 1) / 2.0) * (TreeLayout.EntityWidth + 30);
         var y = kind == SuggestionKind.Effect
             ? Placement.Positions.Values.Min(p => p.Y) - TreeLayout.EntityHeight - 60
-            : Placement.Positions.Values.Max(p => p.Y) + TreeLayout.EntityHeight + 60;
+            : Placement.Positions.Max(p => p.Value.Y + Placement.HeightOf(p.Key)) + 60;
         return (x, y);
     }
 
