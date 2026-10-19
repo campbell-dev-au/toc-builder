@@ -1,11 +1,14 @@
 using TocBuilder.Web.Client.Pages;
 using TocBuilder.Web.Components;
+using TocBuilder.Web.Suggestions;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveWebAssemblyComponents();
+
+builder.Services.AddHttpClient<IModelClient, AnthropicModelClient>();
 
 var app = builder.Build();
 
@@ -26,4 +29,8 @@ app.MapRazorComponents<App>()
     .AddInteractiveWebAssemblyRenderMode()
     .AddAdditionalAssemblies(typeof(TocBuilder.Web.Client._Imports).Assembly);
 
+app.MapSuggestions();
+
 app.Run();
+
+public partial class Program;
