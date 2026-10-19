@@ -5,8 +5,8 @@ namespace TocBuilder.Domain;
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum SuggestionKind { Cause, Effect, CoCause }
 
-/// <summary>A candidate for the tree. It is not part of any tree until the user accepts it. <paramref name="Existing"/> names an Entity already in the tree to link instead of adding a new one.</summary>
-public sealed record Suggestion(SuggestionKind Kind, string Statement, EntityId? Existing = null);
+/// <summary>A candidate for the tree. It is not part of any tree until the user accepts it. <paramref name="Existing"/> names an Entity already in the tree to link instead of adding a new one. <paramref name="Summary"/> is the proposed Summary for a new Entity, or null when there is none.</summary>
+public sealed record Suggestion(SuggestionKind Kind, string Statement, EntityId? Existing = null, string? Summary = null);
 
 public enum AcceptOutcome { Accepted, NoLongerValid, DuplicateStatement }
 
@@ -53,9 +53,9 @@ public sealed class SuggestionSet
             case (SuggestionKind.Cause, { } existing): tree.Link(existing, _entity!.Value); break;
             case (SuggestionKind.Effect, { } existing): tree.Link(_entity!.Value, existing); break;
             case (SuggestionKind.CoCause, { } existing): tree.AddToJunction(_junction!.Value, existing); break;
-            case (SuggestionKind.Cause, null): tree.AddCause(_entity!.Value, statement); break;
-            case (SuggestionKind.Effect, null): tree.AddEffect(_entity!.Value, statement); break;
-            default: tree.AddCoCause(_junction!.Value, statement); break;
+            case (SuggestionKind.Cause, null): tree.AddCause(_entity!.Value, statement, suggestion.Summary); break;
+            case (SuggestionKind.Effect, null): tree.AddEffect(_entity!.Value, statement, suggestion.Summary); break;
+            default: tree.AddCoCause(_junction!.Value, statement, suggestion.Summary); break;
         }
         Dismiss(suggestion);
         return AcceptOutcome.Accepted;
@@ -81,7 +81,7 @@ public sealed class SuggestionSet
         var targetGone = _junction is { } junction ? tree.Junctions.All(j => j.Id != junction) : tree.Entities.All(e => e.Id != _entity);
         if (targetGone) return null;
         if (suggestion.Existing is not { } existingId)
-            return string.IsNullOrWhiteSpace(suggestion.Statement) || tree.Entities.Any(e => Normalise(e.Statement) == Normalise(suggestion.Statement)) ? null : suggestion;
+            return string.IsNullOrWhiteSpace(suggestion.Statement) || tree.Entities.Any(e => Normalise(e.Statement) == Normalise(suggestion.Statement)) ? null : suggestion with { Summary = TidySummary(suggestion.Summary) };
         if (tree.Entities.FirstOrDefault(e => e.Id == existingId) is not { } existing) return null;
         var feasible = suggestion.Kind switch
         {
@@ -90,6 +90,14 @@ public sealed class SuggestionSet
             _ => tree.CheckAddToJunction(_junction!.Value, existingId) == JunctionOutcome.Done,
         };
         return feasible ? suggestion with { Statement = existing.Statement } : null;
+    }
+
+    /// <summary>The Summary as an Entity may carry it: trimmed, cut to the longest allowed, and null when blank.</summary>
+    private static string? TidySummary(string? summary)
+    {
+        var clean = summary?.Trim();
+        if (string.IsNullOrEmpty(clean)) return null;
+        return clean.Length > Tree.MaxSummaryLength ? clean[..Tree.MaxSummaryLength].TrimEnd() : clean;
     }
 
     private static string Normalise(string statement) => statement.Trim().ToLowerInvariant();

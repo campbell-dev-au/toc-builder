@@ -71,6 +71,38 @@ public class SuggestionEndpointTests
     }
 
     [Fact]
+    public async Task Each_candidate_comes_back_with_its_proposed_summary()
+    {
+        var tree = new Tree();
+        var late = tree.AddEntity("Late deliveries");
+        var model = new FakeModelClient(new Suggestion(SuggestionKind.Cause, "No buffer before the press", Summary: "No press buffer"));
+        using var client = ClientWith(model, out var factory);
+        using var _ = factory;
+
+        var response = await client.PostAsJsonAsync("/api/suggestions", new SuggestionApiRequest(Json(tree), SuggestionKind.Cause, late.Id, null));
+
+        Assert.Equal([new Suggestion(SuggestionKind.Cause, "No buffer before the press", Summary: "No press buffer")], await response.Content.ReadFromJsonAsync<Suggestion[]>());
+    }
+
+    [Fact]
+    public async Task An_over_long_summary_is_trimmed_and_a_blank_one_is_dropped_without_rejecting_the_candidate()
+    {
+        var tree = new Tree();
+        var late = tree.AddEntity("Late deliveries");
+        var model = new FakeModelClient(
+            new Suggestion(SuggestionKind.Cause, "No buffer before the press", Summary: new string('x', 60)),
+            new Suggestion(SuggestionKind.Cause, "Orders are unplanned", Summary: "   "));
+        using var client = ClientWith(model, out var factory);
+        using var _ = factory;
+
+        var response = await client.PostAsJsonAsync("/api/suggestions", new SuggestionApiRequest(Json(tree), SuggestionKind.Cause, late.Id, null));
+
+        Assert.Equal(
+            [new Suggestion(SuggestionKind.Cause, "No buffer before the press", Summary: new string('x', 40)), new Suggestion(SuggestionKind.Cause, "Orders are unplanned")],
+            await response.Content.ReadFromJsonAsync<Suggestion[]>());
+    }
+
+    [Fact]
     public async Task Missing_co_causes_are_requested_for_an_AND_junction()
     {
         var tree = new Tree();
