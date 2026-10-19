@@ -28,11 +28,11 @@
                   OnStartPan="StartPan" OnStartEntityDrag="@(drag => StartEntityDrag(drag.Id, drag.Args))" OnDeselect="Deselect" OnSelectEntity="Select" OnToggleEntity="ToggleSelect"
                   OnSelectLink="SelectLink" OnSelectJunction="SelectJunction" OnSelectGhost="SelectGhost" />
 
-    <ContextPanel Tree="tree" Report="report" Target="CurrentTarget" SelectedEntity="SelectedEntity" SelectedEntityCount="selection.Count" MakeAndUnavailable="@MakeAndUnavailable" SelectedJunction="selectedJunction"
+    <ContextPanel Tree="tree" Report="report" Target="CurrentTarget" SelectedEntity="SelectedEntity" SelectedEntityCount="selection.Count" MakeAndUnavailable="@MakeAndUnavailable" SelectedJunction="selectedJunction" AddingCause="addingCause"
                   Linking="linking" Suggesting="suggesting"
                   SelectedGhost="selectedGhost" @bind-GhostEdit="ghostEdit" EditRevision="editRevision"
                   OnAddCause="AddCause" OnAddEffect="AddEffect" OnToggleLinking="ToggleLinking" OnMakeAnd="MakeAnd"
-                   OnDelete="DeleteSelected" OnAddToJunction="AddToJunction" OnRemoveFromJunction="RemoveFromJunction" OnUngroup="Ungroup"
+                   OnDelete="DeleteSelected" OnToggleAddingCause="ToggleAddingCause" OnRemoveFromJunction="RemoveFromJunction" OnUngroup="Ungroup"
                   OnEditSelected="EditSelected" OnSummarySelected="SummarySelected" OnTagSelected="TagSelected"
                   OnSuggest="Suggest" OnAcceptGhost="AcceptGhost" OnDismissGhost="DismissGhost"
                   OnRaise="@(raised => Raise(raised.Target, raised.Category))"
@@ -68,6 +68,7 @@
         set { selection.Clear(); if (value is { } id) selection.Add(id); }
     }
     private bool linking;
+    private bool addingCause;   // the next Entity clicked is added to the selected AND-junction
     private JunctionId? selectedJunction;
     private CausalLink? selectedLink;
     private string statement = "";
@@ -518,6 +519,7 @@
     private void Select(EntityId id)
     {
         if (linking && selected is not null) { LinkSelectedTo(id); return; }   // linking an entity to itself is reported as a cycle
+        if (addingCause && selectedJunction is not null) { AddToJunction(id); return; }
         ClearModes();
         ClearSelection();
         selected = id;
@@ -560,12 +562,24 @@
         focusCanvas = true;
     }
 
+    private void ToggleAddingCause()
+    {
+        if (selectedJunction is null) return;
+        Begin();
+        var wasAdding = addingCause;
+        ClearModes();
+        addingCause = !wasAdding;
+        if (addingCause) Report("Click the entity to add as a cause to this AND-junction, or press Escape to cancel.");
+        focusCanvas = true;
+    }
+
     private void AddToJunction(EntityId entity)
     {
         if (selectedJunction is not { } junction) return;
         Begin();
         var outcome = tree.AddToJunction(junction, entity);
-        if (outcome != JunctionOutcome.Done) { Report(Explain(outcome), isError: true); return; }
+        if (outcome != JunctionOutcome.Done) { Report(Explain(outcome), isError: true); return; }   // stays in adding so another entity can be tried
+        ClearModes();
         Report("Added to the AND-junction.");
         Refresh();
     }
@@ -605,6 +619,7 @@
     private void ClearModes()
     {
         linking = false;
+        addingCause = false;
     }
 
     private void LinkSelectedTo(EntityId effect)
@@ -640,7 +655,7 @@
         {
             case "Tab": AddCause(); break;
             case "Delete": DeleteSelected(); break;
-            case "Escape" when linking: ClearModes(); Report(""); break;
+            case "Escape" when linking || addingCause: ClearModes(); Report(""); break;
             case "Escape": ClearSelection(); break;
         }
     }

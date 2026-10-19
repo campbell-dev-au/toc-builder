@@ -68,22 +68,9 @@
                     </li>
                 }
             </ul>
-            @{ var candidates = Tree.Entities.Where(e => Tree.CheckAddToJunction(junctionId, e.Id) == JunctionOutcome.Done).ToArray(); }
-            @if (candidates.Length > 0)
-            {
-                <label>Add cause
-                    <select @key="(EditRevision, junction.Causes.Count)" @onchange="e => addChoice = e.Value?.ToString() ?? string.Empty" aria-label="Entity to add to AND-junction">
-                        <option value="">Choose an entity…</option>
-                        @foreach (var candidate in candidates)
-                        {
-                            <option value="@candidate.Id.Value">@EntityText.Label(candidate)</option>
-                        }
-                    </select>
-                </label>
-                <div class="actions">
-                    <button type="button" @onclick="AddChosen">Add to AND-junction</button>
-                </div>
-            }
+            <div class="actions">
+                <button type="button" @onclick="OnToggleAddingCause" aria-pressed="@(AddingCause ? "true" : "false")">Add cause…</button>
+            </div>
             <div class="actions">
                 <button type="button" @onclick="() => OnSuggest.InvokeAsync(SuggestionKind.CoCause)" disabled="@Suggesting">Suggest co-cause</button>
                 <button type="button" @onclick="OnUngroup">Ungroup</button>
@@ -118,6 +105,7 @@
     [Parameter] public int SelectedEntityCount { get; set; }
     [Parameter] public string? MakeAndUnavailable { get; set; }   // why Make AND cannot be used on the selection; null when it can
     [Parameter] public JunctionId? SelectedJunction { get; set; }
+    [Parameter] public bool AddingCause { get; set; }   // the next Entity clicked joins the selected AND-junction
     [Parameter] public bool Linking { get; set; }
     [Parameter] public bool Suggesting { get; set; }
     [Parameter] public Suggestion? SelectedGhost { get; set; }
@@ -130,7 +118,7 @@
     [Parameter] public EventCallback OnToggleLinking { get; set; }
     [Parameter] public EventCallback OnMakeAnd { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
-    [Parameter] public EventCallback<EntityId> OnAddToJunction { get; set; }
+    [Parameter] public EventCallback OnToggleAddingCause { get; set; }
     [Parameter] public EventCallback<EntityId> OnRemoveFromJunction { get; set; }
     [Parameter] public EventCallback OnUngroup { get; set; }
     [Parameter] public EventCallback<ChangeEventArgs> OnEditSelected { get; set; }
@@ -144,13 +132,4 @@
     [Parameter] public EventCallback<(ReservationId Id, ChangeEventArgs Args)> OnChangeNote { get; set; }
     [Parameter] public EventCallback<EntityId> OnSelectEntity { get; set; }
     [Parameter] public EventCallback<ReservationTarget> OnSelectTarget { get; set; }
-
-    private string addChoice = "";
-
-    private async Task AddChosen()
-    {
-        if (!int.TryParse(addChoice, out var value)) return;
-        addChoice = "";
-        await OnAddToJunction.InvokeAsync(new EntityId(value));
-    }
 }
