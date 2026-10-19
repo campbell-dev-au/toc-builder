@@ -1,0 +1,13 @@
+<div class="scope">
+    <label>Scope <input @ref="input" @key="(EditRevision, 3)" value="@Scope" @onchange="OnEdit" size="80" placeholder="The problem domain, sent with each request for suggestions" aria-label="Scope" /></label>
+</div>
+
+@code {
+    private ElementReference input;
+
+    [Parameter] public string Scope { get; set; } = "";
+    [Parameter] public int EditRevision { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnEdit { get; set; }
+
+    public ValueTask FocusAsync() => input.FocusAsync();
+}
